@@ -182,6 +182,7 @@ function makePassenger(name) {
   const sprite = new THREE.Sprite(emojiMat('🙂')); sprite.scale.set(0.24, 0.24, 1); sprite.position.y = 0.5; head.add(sprite);
   const p = { kind: 'pax', name, g, rig, sprite, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 0.3, spin: { x: 0, z: 0 }, phase: rand(0, 10), pose: 'stand', mood: 70,
     state: 'terminal', seat: null, path: [], then: null, next: null, waitT: 0, downT: 0, off: rand(-22, 18), face: '', calling: null, angry: 0, walkT: 0, tx: 0, tz: 0, wanderT: 0, busSeat: null, bubble: null, bubbleT: 0 };
+  p.mats = { skin, shirt, pants, shoes, hair: hairMat };   // a custom Blender model (models.js) borrows these colors
   g.traverse(o => { if (o.isMesh) { o.userData.passenger = p; targets.push(o); } });
   return p;
 }
@@ -221,6 +222,7 @@ function animatePax(p) {
   r.mouth.rotation.z = shocked || p.mood > 45 ? Math.PI : 0;
   r.mouth.scale.set(1, shocked ? 2.4 : 1, 1);
   if (r.prop) r.prop.rotation.y = t * (p.pose === 'flail' ? 40 : 12);
+  if (p.model) poseModel(p);
 }
 // speech bubbles over people's heads
 const bubbleCache = {};
