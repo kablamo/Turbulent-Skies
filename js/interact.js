@@ -43,6 +43,17 @@ function actionFor(ud, who = LOCAL) {
     if (p.calling) return { key: 'call' + p.seat.label, type: 'press', ready: true, label: `Help ${p.name} (${p.seat.label}), who ${p.calling.text}`, done: () => resolveCall(p) };
     return { key: 'pick', type: 'press', ready: true, label: `Pick up ${p.name} ${p.face}`, done: () => pickUp(p, who) };
   }
+  if (ud.playerId) {
+    // another player! (on a client this only shows the prompt; the host checks it for real)
+    if (isClient()) {
+      const d = (NET.players || []).find(q => q.id === ud.playerId);
+      return d && !d.cb && !d.fly && d.drv < 0 ? { key: 'pickp', type: 'press', ready: true, label: `Pick up ${d.name} 😈`, done: () => {} } : null;
+    }
+    const t = whoById(ud.playerId), why = canCarry(who, t);
+    if (!why) return null;
+    if (why !== 'ok') return { type: 'info', label: why };
+    return { key: 'pickp', type: 'press', ready: true, label: `Pick up ${t.name} 😈`, done: () => carryPlayer(who, t) };
+  }
   const st = STATIONS[ud.station];
   for (const f of S.faults) {
     const step = f.def.steps[f.step];
@@ -123,6 +134,22 @@ function interact(dt) {
     if (S.phase === 'takeoff' && !S.liftoff) setPrompt(S.toSpeed > 0.75 ? '<kbd>Hold W</kbd> PULL UP!' : `Speed ${Math.round(S.toSpeed * 160)} km/h… keep it straight`, S.toSpeed <= 0.75);
     else if (S.phase === 'landing') setPrompt(S.touched ? 'Braking…' : '<kbd>A</kbd><kbd>D</kbd> line up with the runway <kbd>C</kbd> camera', true);
     else setPrompt('<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>C</kbd> camera <kbd>E</kbd> get up', true);
+    return;
+  }
+  const carrier = carriedByName();
+  if (carrier) {
+    if (S.jump) { if (isClient()) netSend({ t: 'wriggle' }); else wriggle(LOCAL); S.shake = Math.max(S.shake, .12); beep(600 + Math.random() * 300, .04, 'square', .03); }
+    S.press = S.drop = S.act = S.jump = false;
+    setPrompt(`😱 ${carrier} is carrying you! <kbd>Mash Space</kbd> to wriggle free`, true);
+    return;
+  }
+  const carrying = carryingName();
+  if (carrying) {
+    if (isClient()) { if (S.press || S.drop) netSend({ t: 'throw', strength: S.press ? 11 : 1.2, yaw: P.yaw, pitch: P.pitch }); }
+    else if (S.press) releasePlayer(LOCAL, 11);
+    else if (S.drop) releasePlayer(LOCAL, 1.2);
+    S.press = S.drop = S.act = false;
+    setPrompt(`<kbd>E</kbd>throw ${carrying} <kbd>Q</kbd>put down`, true);
     return;
   }
   if (S.held) {
@@ -265,6 +292,8 @@ function helpHTML() {
       <tr><td>${k_('E')} or click</td><td>Use, pick up, throw what you're carrying</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying</td></tr>
+      <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
+      <tr><td>Mash ${k_('Space')}</td><td>Wriggle free when someone's carrying you</td></tr>
       <tr><th colspan="2">Driving the bus or truck</th></tr>
       <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Gas and reverse</td></tr>
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer</td></tr>

@@ -310,7 +310,7 @@ function holdInFront(who) {
   o.g.position.set(pp.x + d.x * 1.0, pp.y + EYE - 0.55 + d.y * 0.8, pp.z + d.z * 1.0);
   if (o.kind === 'pax') {
     // carried sideways across your arms, legs dangling
-    o.g.rotation.set(0, pp.yaw + Math.PI / 2, 0);
+    o.g.rotation.set(0, pp.yaw, 0);
     o.rig.core.rotation.set(0, 0, Math.PI / 2);
     o.g.position.y -= 1.0;
     o.pose = 'held'; animatePax(o);

@@ -132,13 +132,14 @@ function areaName(x, z) {
 
 // ---------------------------------------------------------------- the player
 function respawn() {
-  Object.assign(P, { x: 0, y: 0, z: -7.4, vy: 0, vz: 0, vx: 0, yaw: Math.PI, pitch: 0, falling: false });
+  Object.assign(P, { x: 0, y: 0, z: -7.4, vy: 0, vz: 0, vx: 0, yaw: Math.PI, pitch: 0, falling: false, launched: false, lvx: 0, lvz: 0 });
   if (isClient()) { netSend({ t: 'fell' }); return; }   // the host applies the penalty
   S.integrity -= 5; S.needs.calm -= 25; S.falls++;
   say(pick(['You fell off the plane! Luckily you packed a parachute... and a grappling hook.', 'You fell off! A passing seagull carried you back. Passengers are rattled.', 'Somehow you climbed back in through the landing gear. The passengers saw everything.']), 'bad');
 }
 function startFalling(vx, vz, msg) {
   if (S.held) throwHeld(1);
+  if (carryingName()) { if (isClient()) netSend({ t: 'throw', strength: 1, yaw: P.yaw, pitch: P.pitch }); else releasePlayer(LOCAL, 1); }
   P.falling = true; P.fallT = 0; P.vx = vx; P.vz = vz;
   say(msg || 'AAAAAAAAAAAAHHHH!', 'bad');
   beep(800, 1.2, 'sine', .06);
@@ -153,6 +154,8 @@ function updatePlayer(dt) {
   }
   if (S.flying) { P.x = -0.75; P.z = -10.6; P.y = 0; return; }
   if (S.driving) { const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z); P.x = e.x; P.z = e.z; P.y = v.floor; return; }
+  // someone's carrying you (the host moves you; on a client you follow your carrier)
+  if (carriedByName()) { if (isClient()) followCarrier(); return; }
   // on foot the arrow keys look around, so you can play without a mouse (in vehicles they steer)
   P.yaw += ((keys.arrowleft ? 1 : 0) - (keys.arrowright ? 1 : 0)) * 2.2 * dt;
   P.pitch = clamp(P.pitch + ((keys.arrowup ? 1 : 0) - (keys.arrowdown ? 1 : 0)) * 1.6 * dt, -1.45, 1.45);
@@ -170,6 +173,7 @@ function updatePlayer(dt) {
     cabinForces(P, force);
     mx += force.x * 0.6; mz += force.z * 0.45;
   }
+  if (P.launched) { mx += P.lvx; mz += P.lvz; }   // thrown by another player
   moveBody(P, mx * dt, mz * dt);
 
   // shove any luggage you walk into
@@ -189,5 +193,10 @@ function updatePlayer(dt) {
   if (S.jump && g !== null && P.y <= g + 0.03) P.vy = 4.2;
   S.jump = false;
   fallBody(P, dt);
+  if (P.launched) {
+    const f = Math.max(0, 1 - (P.vy === 0 ? 8 : 0.4) * dt);
+    P.lvx *= f; P.lvz *= f;
+    if (P.vy === 0 && Math.hypot(P.lvx, P.lvz) < 0.4) { P.launched = false; P.lvx = P.lvz = 0; }
+  }
   if (g === null && P.y < -2.5) startFalling(mx * 0.5, mz);
 }

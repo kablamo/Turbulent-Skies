@@ -85,10 +85,12 @@ setInterval(() => {
   const walking = !S.driving && !S.flying;
   tbtn('c').style.display = walking ? 'none' : '';
   tbtn('f').style.display = S.driving && S.driving.kind === 'bus' ? '' : 'none';
-  tbtn('q').style.display = S.held || (S.driving && S.driving.kind === 'bus') ? '' : 'none';
+  const carrying = carryingName();
+  tbtn('q').style.display = S.held || carrying || (S.driving && S.driving.kind === 'bus') ? '' : 'none';
   tbtn(' ').style.display = walking ? '' : 'none';
+  tbtn(' ').querySelector('small').textContent = carriedByName() ? 'wriggle' : 'jump';
   tbtn('q').querySelector('small').textContent = S.driving ? 'door' : 'put down';
-  tbtn('e').querySelector('small').textContent = S.driving || S.flying ? 'get up' : S.held ? 'throw' : 'use';
+  tbtn('e').querySelector('small').textContent = S.driving || S.flying ? 'get up' : S.held || carrying ? 'throw' : 'use';
 }, 150);
 
 // try for a full screen game on touch devices (iPads allow it; it's fine if it's refused)

@@ -276,7 +276,7 @@ function update(dt) {
     camera.rotation.set(P.pitch, P.yaw, 0);
   }
   plane.updateMatrixWorld(true);
-  if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); netShoveBags(dt); chatter(dt); }
+  if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); hostCarry(); netShoveBags(dt); chatter(dt); }
   else netAnimate(dt);
   updateAvatars(dt);
   interact(dt);

@@ -68,11 +68,11 @@ if (NET.mode === 'host') {
 }
 
 // ---------------------------------------------------------------- avatars for other players
-// They look like passengers (with captain hats and name tags), but you can't pick them up.
+// They look like passengers (with captain hats and name tags). Look at one and press E to pick them up.
 const avatars = {};
-function makeAvatar(name) {
+function makeAvatar(name, id) {
   const a = makePassenger(name);
-  a.g.traverse(o => { if (o.isMesh) { delete o.userData.passenger; const i = targets.indexOf(o); if (i >= 0) targets.splice(i, 1); } });
+  a.g.traverse(o => { if (o.isMesh) { delete o.userData.passenger; o.userData.playerId = id; } });
   const head = a.rig.head;
   cyl(0.19, 0.2, 0.12, M.dark, 0, 0.2, 0, head); box(0.3, 0.02, 0.18, M.dark, 0, 0.15, -0.16, head);
   box(0.12, 0.05, 0.02, mat(0xffd34a, { metalness: .8 }), 0, 0.22, -0.2, head);
@@ -80,12 +80,27 @@ function makeAvatar(name) {
   shout(a, '✈ ' + name, 1e9);
   return a;
 }
+function removeAvatar(a) {
+  plane.remove(a.g);
+  a.g.traverse(o => { const i = targets.indexOf(o); if (i >= 0) targets.splice(i, 1); });
+}
 function poseAvatar(a, d, dt) {
+  if (d.cb) {
+    // being carried: lying sideways across someone's arms
+    a.pose = 'held'; a.spinT = 0;
+    lerpTo(a.g.position, d.x, d.y + EYE - 1.55, d.z, dt);
+    a.g.rotation.set(0, d.yaw, 0); a.rig.core.rotation.set(0, 0, Math.PI / 2);
+    animatePax(a);
+    return;
+  }
   const moved = Math.hypot(d.x - a.g.position.x, d.z - a.g.position.z);
   a.walkT += moved > 0.01 ? dt * 1.2 : 0;
   a.pose = d.seat ? 'sit' : moved > 0.01 ? 'walk' : 'stand';
   lerpTo(a.g.position, d.x, d.y, d.z, dt);
   a.g.rotation.set(0, d.yaw, 0);
+  // thrown: tumbling through the air
+  if (d.air) { a.spinT = (a.spinT || 0) + dt; a.pose = 'flail'; a.rig.core.rotation.set(a.spinT * 7, 0, a.spinT * 4); }
+  else { a.spinT = 0; a.rig.core.rotation.set(0, 0, 0); }
   animatePax(a);
 }
 // the host shows remote players; everyone else shows whoever's in the snapshot except themselves
@@ -96,23 +111,25 @@ function updateAvatars(dt) {
     for (const d of NET.players) {
       if (d.id === myId) continue;
       seen.add(d.id);
-      if (!avatars[d.id]) avatars[d.id] = makeAvatar(d.name);
+      if (!avatars[d.id]) avatars[d.id] = makeAvatar(d.name, d.id);
       poseAvatar(avatars[d.id], d, dt);
     }
-    for (const id in avatars) if (!seen.has(id)) { plane.remove(avatars[id].g); delete avatars[id]; }
+    for (const id in avatars) if (!seen.has(id)) { removeAvatar(avatars[id]); delete avatars[id]; }
   }
 }
 
 // ---------------------------------------------------------------- host side
 function hostAddPlayer(conn) {
   const r = { id: conn.peer, conn, name: 'Pilot', isLocal: false, pose: { x: 0, y: GROUND, z: TERM.z0 + 4.5, yaw: 0, pitch: 0 }, keys: {}, held: null, driving: null };
-  r.avatar = makeAvatar('...');
+  r.avatar = makeAvatar('...', r.id);
   NET.remotes.push(r);
   conn.on('data', m => hostOnData(r, m));
   conn.on('close', () => {
     if (r.held) throwHeld(1, r);
+    if (r.carryP) releasePlayer(r, 1);
+    if (r.carriedBy) r.carriedBy.carryP = null;
     if (S.pilotRP === r) S.pilotRP = null;
-    plane.remove(r.avatar.g);
+    removeAvatar(r.avatar);
     NET.remotes.splice(NET.remotes.indexOf(r), 1);
     say(`👋 ${r.name} left the flight.`);
     NET.roster = NET.remotes.map(x => x.name); showRoomPanel();
@@ -126,13 +143,13 @@ function hostOnData(r, m) {
   switch (m.t) {
     case 'hello':
       r.name = String(m.name || 'Pilot').slice(0, 16);
-      plane.remove(r.avatar.g); r.avatar = makeAvatar(r.name);
+      removeAvatar(r.avatar); r.avatar = makeAvatar(r.name, r.id);
       say(`👋 ${r.name} joined the crew!`, 'good');
       NET.roster = NET.remotes.map(x => x.name); showRoomPanel();
       break;
     case 'me':
-      if (!r.driving && S.pilotRP !== r) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
-      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.keys = m.keys || {};
+      if (!r.driving && S.pilotRP !== r && !r.carriedBy) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.keys = m.keys || {}; r.air = !!m.air;
       break;
     case 'act': {
       const ud = hostRef(m.ref); if (!ud) return;
@@ -142,13 +159,18 @@ function hostOnData(r, m) {
       if (m.how === 'mash' && a.mash) a.mash(); else if (a.done) a.done();
       break;
     }
-    case 'throw': if (r.held) { r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; throwHeld(m.strength, r); } break;
+    case 'throw':
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch;
+      if (r.held) throwHeld(m.strength, r); else if (r.carryP) releasePlayer(r, m.strength);
+      break;
+    case 'wriggle': wriggle(r); break;
     case 'exit': if (r.driving) exitVehicle(r); break;
     case 'vehAct': if (r.driving) vehicleAction(r.driving); break;
     case 'busDoor': if (r.driving && r.driving.kind === 'bus') toggleBusDoor(r.driving); break;
     case 'stand': if (S.pilotRP === r) { S.pilotRP = null; netTeleport(r, -0.75, 0, -10, Math.PI); say(`${r.name} left the controls. Autopilot on.`); } break;
     case 'fell':
       if (r.held) throwHeld(1, r);
+      if (r.carryP) releasePlayer(r, 1);
       S.integrity -= 5; S.needs.calm -= 25; S.falls++;
       say(`🪂 ${r.name} fell off the plane and climbed back in. The passengers saw everything.`, 'bad');
       break;
@@ -170,16 +192,19 @@ function heldRef(o) { return !o ? null : o.kind === 'pax' ? ['pax', passengers.i
 // where each player's body should be drawn (sitting at the wheel / in the cockpit when driving / flying)
 function playerPose(who) {
   const v = who.isLocal ? S.driving : who.driving, flying = who.isLocal ? S.flying : S.pilotRP === who;
-  if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z + 0.0, yaw: v.h, seat: true }; }
-  if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true };
-  return { x: who.pose.x, y: who.pose.y, z: who.pose.z, yaw: who.pose.yaw, seat: false };
+  const extra = { pitch: who.pose.pitch || 0, cb: who.carriedBy ? idOf(who.carriedBy) : null, cy: who.carryP ? idOf(who.carryP) : null,
+    air: who.isLocal ? !!P.launched : !!who.air };
+  if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z + 0.0, yaw: v.h, seat: true, ...extra }; }
+  if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
+  const yaw = who.carriedBy ? who.carriedBy.pose.yaw : who.pose.yaw;
+  return { x: who.pose.x, y: who.pose.y, z: who.pose.z, yaw, seat: false, ...extra };
 }
 const r2 = v => Math.round(v * 100) / 100;
 function buildSnap() {
   const segBits = segments.map(sg => (sg.sides.L.open ? 1 : 0) | (sg.sides.L.patched ? 2 : 0) | (sg.sides.R.open ? 4 : 0) | (sg.sides.R.patched ? 8 : 0));
   const players = [LOCAL, ...NET.remotes].map(w => {
     const p = playerPose(w);
-    return { id: w.isLocal ? 'host' : w.id, name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), seat: p.seat,
+    return { id: idOf(w), name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), seat: p.seat, cb: p.cb, cy: p.cy, air: p.air,
       drv: vehicles.indexOf(w.isLocal ? S.driving : w.driving), fly: w.isLocal ? S.flying : S.pilotRP === w, held: heldRef(w.held) };
   });
   return {
@@ -208,6 +233,7 @@ function netSend(m) { if (hostConn && hostConn.open) hostConn.send(m); }
 // a portable name for whatever you pointed at
 function netRef(ud) {
   if (!ud) return null;
+  if (ud.playerId) return { player: ud.playerId };
   if (ud.item) return { item: items.indexOf(ud.item) };
   if (ud.passenger) return { pax: passengers.indexOf(ud.passenger) };
   if (ud.drive) return { drive: vehicles.indexOf(ud.drive) };
@@ -217,6 +243,7 @@ function netRef(ud) {
 }
 function hostRef(ref) {
   if (!ref) return null;
+  if (ref.player !== undefined) return whoById(ref.player) && { playerId: ref.player };
   if (ref.item !== undefined) return items[ref.item] && { item: items[ref.item] };
   if (ref.pax !== undefined) return passengers[ref.pax] && { passenger: passengers[ref.pax] };
   if (ref.drive !== undefined) return vehicles[ref.drive] && { drive: vehicles[ref.drive] };
@@ -228,7 +255,8 @@ function clientOnData(m) {
   if (m.t === 'snap') {
     applySnap(m);
     if (!gotFirstSnap) { gotFirstSnap = true; $('joinStatus').textContent = 'Ready!'; $('goBtn').disabled = false; }
-  } else if (m.t === 'tp') { Object.assign(P, { x: m.x, y: m.y, z: m.z, yaw: m.yaw, vy: 0, falling: false }); }
+  } else if (m.t === 'launch') { launchMe(m); if (NET.me) NET.me.cb = null; }
+  else if (m.t === 'tp') { Object.assign(P, { x: m.x, y: m.y, z: m.z, yaw: m.yaw, vy: 0, falling: false }); }
   else if (m.t === 'say') sayLocal(m.text);
 }
 const lerpTo = (v, x, y, z, dt) => { const k = Math.min(1, dt * 14); v.x += (x - v.x) * k; v.y += (y - v.y) * k; v.z += (z - v.z) * k; };
@@ -288,6 +316,7 @@ function applySnap(m) {
   const roster = m.pl.filter(p => p.id !== myId).map(p => p.name + (p.id === 'host' ? ' (host)' : ''));
   if (String(roster) !== String(NET.roster)) { NET.roster = roster; if (S.running) showRoomPanel(); }
   const me = m.pl.find(p => p.id === myId);
+  NET.me = me;
   if (me) {
     const wasDriving = S.driving;
     S.driving = me.drv >= 0 ? vehicles[me.drv] : null;
@@ -338,6 +367,76 @@ function netAnimate(dt) {
   }
 }
 
+// ---------------------------------------------------------------- picking up other players
+// The host decides who's carrying whom; a carried player's own game just follows their carrier around.
+const idOf = w => w.isLocal ? 'host' : w.id;
+function whoById(id) { return id === 'host' ? LOCAL : NET.remotes.find(r => r.id === id) || null; }
+const nameOfId = id => { const d = (NET.players || []).find(q => q.id === id); return d ? d.name : 'Someone'; };
+const isDriving = w => w.isLocal ? !!S.driving : !!w.driving;
+const isFlying = w => w.isLocal ? S.flying : S.pilotRP === w;
+// who's carrying you / who you're carrying (null if nobody)
+function carriedByName() { return isClient() ? (NET.me && NET.me.cb ? nameOfId(NET.me.cb) : null) : LOCAL.carriedBy ? LOCAL.carriedBy.name : null; }
+function carryingName() { return isClient() ? (NET.me && NET.me.cy ? nameOfId(NET.me.cy) : null) : LOCAL.carryP ? LOCAL.carryP.name : null; }
+// a carried player is held a metre in front of their carrier
+function carrySpot(pp) { const d = lookDir(pp); return { x: pp.x + d.x * 1.0, y: pp.y, z: pp.z + d.z * 1.0 }; }
+function canCarry(who, t) {
+  if (!t || t === who) return null;
+  if (who.held || who.carryP) return 'Your hands are full!';
+  if (who.carriedBy) return null;
+  if (t.carriedBy) return `Someone is already carrying ${t.name}!`;
+  if (t.carryP) return `${t.name} is carrying someone. One at a time!`;
+  if (isDriving(t) || isFlying(t)) return `${t.name} is busy ${isFlying(t) ? 'flying the plane' : 'driving'}!`;
+  return 'ok';
+}
+function carryPlayer(who, t) {
+  if (canCarry(who, t) !== 'ok') return;
+  who.carryP = t; t.carriedBy = who; t.wriggle = 0;
+  say(pick([`💪 ${who.name} picked up ${t.name}!`, `${who.name} scooped up ${t.name} like a sack of potatoes!`, `${t.name} is being carried by ${who.name}. How undignified.`]));
+  beep(500, .08, 'sine', .05);
+}
+// let go of whoever `who` is carrying: a gentle drop, or a big throw
+function releasePlayer(who, strength) {
+  const t = who.carryP; if (!t) return;
+  who.carryP = null; t.carriedBy = null;
+  const d = lookDir(who.pose);
+  const v = { x: d.x * strength, y: Math.max(0, d.y) * strength + (strength > 2 ? 3.5 : 0.5), z: d.z * strength };
+  if (t.isLocal) launchMe(v); else if (t.conn && t.conn.open) t.conn.send({ t: 'launch', x: v.x, y: v.y, z: v.z });
+  if (strength > 2) {
+    say(pick([`🚀 ${who.name} threw ${t.name}!`, `${t.name} is flying! (Thanks, ${who.name}.)`, `${who.name} yeeted ${t.name} across the room.`]));
+    beep(300, .15, 'triangle', .06);
+  }
+}
+function launchMe(v) { P.lvx = v.x; P.lvz = v.z; P.vy = v.y; P.y += 0.2; P.launched = true; }
+// mash Space while carried to escape
+function wriggle(t) {
+  if (!t.carriedBy) return;
+  t.wriggle = (t.wriggle || 0) + 1;
+  if (t.wriggle >= 8) { const c = t.carriedBy; say(`🐛 ${t.name} wriggled free from ${c.name}!`); releasePlayer(c, 1.5); }
+}
+// a carrier's position, smoothed (remote players only report in 15 times a second)
+function smoothPose(who) {
+  if (who.isLocal) return who.pose;
+  const g = who.avatar.g.position;
+  return { x: g.x, y: g.y, z: g.z, yaw: who.pose.yaw, pitch: who.pose.pitch || 0 };
+}
+// host: keep carried players in their carrier's arms, and drop them if the carrier gets busy
+function hostCarry() {
+  for (const who of [LOCAL, ...NET.remotes]) {
+    const t = who.carryP; if (!t) continue;
+    if (isDriving(who) || isFlying(who) || (who.isLocal && P.falling)) { releasePlayer(who, 1); continue; }
+    const c = carrySpot(smoothPose(who));
+    if (t.isLocal) { P.x = c.x; P.y = c.y; P.z = c.z; P.vy = 0; }
+    else Object.assign(t.pose, c);
+  }
+}
+// client: if you're being carried, go where your carrier's arms are
+function followCarrier() {
+  const id = NET.me && NET.me.cb, a = avatars[id], d = (NET.players || []).find(q => q.id === id);
+  if (!a || !d) return;
+  const c = carrySpot({ x: a.g.position.x, y: a.g.position.y, z: a.g.position.z, yaw: d.yaw, pitch: d.pitch || 0 });
+  P.x = c.x; P.y = c.y; P.z = c.z; P.vy = 0;
+}
+
 // ---------------------------------------------------------------- the network tick
 function netUpdate(dt) {
   if (NET.mode === 'solo') return;
@@ -351,7 +450,7 @@ function netUpdate(dt) {
   if (NET.mode === 'client') {
     const k = {};
     for (const key of ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']) if (keys[key]) k[key] = true;
-    netSend({ t: 'me', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), keys: k });
+    netSend({ t: 'me', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), keys: k, air: !!P.launched });
   }
 }
 // the host keeps sending snapshots even before it clicks "Start playing"
