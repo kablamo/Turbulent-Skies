@@ -1,0 +1,626 @@
+// Luggage and passengers: what they look like, how they move, and carrying/throwing them.
+'use strict';
+const mat = (c, o) => std(c, Object.assign({ roughness: .7 }, o));
+function sph(r, m, x, y, z, parent, scale) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m);
+  s.position.set(x, y, z); if (scale) s.scale.set(...scale); parent.add(s); return s;
+}
+
+// ---------------------------------------------------------------- cargo
+// Each type builds its model into g (facing -z). `alive` cargo wanders about on its own once it's loose.
+const BAGS = {
+  suitcase: { name: 'suitcase', r: 0.32, build: g => { box(0.45, 0.6, 0.25, mat(new THREE.Color().setHSL(Math.random(), .6, .45)), 0, 0.3, 0, g); box(0.2, 0.06, 0.04, M.dark, 0, 0.63, 0, g); for (const s of [-1, 1]) box(0.47, 0.04, 0.27, mat(0xffcc33), 0, 0.3 + s * 0.15, 0, g); } },
+  duck: { name: 'giant rubber duck', r: 0.42, build: g => {
+    const y = mat(0xffd21a, { roughness: .3 });
+    sph(0.38, y, 0, 0.36, 0.05, g, [1, 0.8, 1.2]); sph(0.22, y, 0, 0.78, -0.2, g);
+    box(0.18, 0.06, 0.18, mat(0xff7a1a), 0, 0.74, -0.42, g);
+    for (const s of [-1, 1]) { sph(0.045, M.white, s * 0.1, 0.84, -0.38, g); sph(0.022, M.dark, s * 0.1, 0.84, -0.42, g); }
+    sph(0.12, y, 0, 0.5, 0.48, g, [1, 0.6, 1]);
+  } },
+  gnome: { name: 'garden gnome', r: 0.25, build: g => {
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.4, 14), mat(0x2f5fb3)); body.position.y = 0.2; g.add(body);
+    sph(0.12, mat(0xffd0a8), 0, 0.46, 0, g);
+    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.22, 12), M.white); beard.position.set(0, 0.34, -0.06); beard.rotation.x = Math.PI; g.add(beard);
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 14), mat(0xd8342c)); hat.position.y = 0.68; hat.rotation.z = 0.25; g.add(hat);
+    sph(0.03, mat(0xff8080), 0, 0.46, -0.12, g);
+  } },
+  tuba: { name: 'tuba', r: 0.35, build: g => {
+    const gold = mat(0xe8b830, { metalness: .9, roughness: .25 });
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 10, 20), gold); coil.position.y = 0.35; g.add(coil);
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.07, 0.4, 18, 1, true), mat(0xe8b830, { metalness: .9, roughness: .25, side: THREE.DoubleSide }));
+    bell.position.set(0, 0.75, 0); g.add(bell);
+  } },
+  cactus: { name: 'potted cactus', r: 0.25, build: g => {
+    cyl(0.2, 0.15, 0.3, mat(0xc0603a), 0, 0.15, 0, g);
+    const green = mat(0x3f9a45);
+    cyl(0.1, 0.1, 0.65, green, 0, 0.62, 0, g); sph(0.1, green, 0, 0.95, 0, g);
+    for (const s of [-1, 1]) { cyl(0.06, 0.06, 0.25, green, s * 0.16, 0.7 + s * 0.05, 0, g); box(0.12, 0.06, 0.08, green, s * 0.1, 0.6 + s * 0.05, 0, g); }
+    sph(0.04, mat(0xff5fa0), 0, 1.06, 0, g);
+  } },
+  toilet: { name: 'spare toilet', r: 0.35, build: g => {
+    box(0.4, 0.4, 0.5, M.porcelain, 0, 0.2, 0, g); box(0.44, 0.05, 0.52, M.white, 0, 0.43, 0, g);
+    box(0.42, 0.45, 0.16, M.porcelain, 0, 0.6, 0.25, g); box(0.1, 0.03, 0.05, M.steel, 0.12, 0.82, 0.22, g);
+  } },
+  moose: { name: 'stuffed moose head', r: 0.4, build: g => {
+    box(0.5, 0.6, 0.06, M.wood, 0, 0.45, 0.2, g);
+    const brown = mat(0x6b4423);
+    box(0.28, 0.32, 0.4, brown, 0, 0.45, -0.05, g); box(0.2, 0.18, 0.25, brown, 0, 0.36, -0.3, g);
+    for (const s of [-1, 1]) {
+      box(0.35, 0.05, 0.18, mat(0xd9c39a), s * 0.32, 0.72, 0, g);
+      for (let i = 0; i < 3; i++) box(0.04, 0.14, 0.04, mat(0xd9c39a), s * (0.2 + i * 0.1), 0.8, 0, g);
+      sph(0.03, M.dark, s * 0.09, 0.52, -0.25, g);
+    }
+  } },
+  fishtank: { name: 'fish tank', r: 0.35, build: g => {
+    box(0.6, 0.45, 0.35, std(0x9fd4ff, { transparent: true, opacity: .35, roughness: .1 }), 0, 0.23, 0, g);
+    box(0.56, 0.3, 0.31, std(0x3a8fd8, { transparent: true, opacity: .5 }), 0, 0.17, 0, g);
+    const f = new THREE.Sprite(emojiMat('🐠')); f.scale.set(0.2, 0.2, 1); f.position.set(0, 0.2, 0); g.add(f); g.userData.fish = f;
+  } },
+  croc: { name: 'crocodile', r: 0.6, alive: { speed: 0.5, kind: 'croc' }, build: g => {
+    const green = mat(0x3f7a35), belly = mat(0x9ab35a);
+    box(0.45, 0.2, 1.0, green, 0, 0.16, 0, g); box(0.38, 0.06, 0.9, belly, 0, 0.06, 0, g);
+    box(0.3, 0.13, 0.45, green, 0, 0.17, -0.68, g);                     // head + upper jaw
+    for (let i = 0; i < 5; i++) for (const s of [-1, 1]) box(0.025, 0.05, 0.025, M.white, s * 0.13, 0.09, -0.5 - i * 0.08, g);
+    const jaw = new THREE.Group(); jaw.position.set(0, 0.1, -0.48); g.add(jaw);
+    box(0.28, 0.05, 0.42, belly, 0, -0.02, -0.2, jaw);
+    for (const s of [-1, 1]) { sph(0.05, mat(0xffdd33), s * 0.09, 0.26, -0.55, g); sph(0.025, M.dark, s * 0.09, 0.28, -0.59, g); }
+    const tail = new THREE.Group(); tail.position.set(0, 0.15, 0.5); g.add(tail);
+    box(0.28, 0.14, 0.6, green, 0, 0, 0.3, tail); box(0.14, 0.08, 0.45, green, 0, 0, 0.8, tail);
+    for (let i = 0; i < 6; i++) box(0.06, 0.06, 0.06, green, 0, 0.29, -0.4 + i * 0.16, g);   // spiky back
+    for (const [x, z] of [[-0.25, -0.35], [0.25, -0.35], [-0.25, 0.35], [0.25, 0.35]]) box(0.1, 0.1, 0.12, green, x, 0.05, z, g);
+    g.userData.jaw = jaw; g.userData.tail = tail;
+  } },
+  chicken: { name: 'chicken', r: 0.2, alive: { speed: 1.2, kind: 'chicken' }, build: g => {
+    sph(0.16, M.white, 0, 0.26, 0, g, [1, 0.9, 1.25]);
+    sph(0.09, M.white, 0, 0.45, -0.13, g);
+    box(0.03, 0.07, 0.08, mat(0xe02020), 0, 0.55, -0.13, g);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.07, 8), mat(0xffa020)); beak.rotation.x = -Math.PI / 2; beak.position.set(0, 0.44, -0.24); g.add(beak);
+    for (const s of [-1, 1]) {
+      sph(0.018, M.dark, s * 0.05, 0.47, -0.2, g);
+      cyl(0.012, 0.012, 0.14, mat(0xffa020), s * 0.06, 0.07, 0, g);
+    }
+    const wings = [-1, 1].map(s => { const w = new THREE.Group(); w.position.set(s * 0.14, 0.3, 0); g.add(w); sph(0.08, M.white, s * 0.04, -0.03, 0.02, w, [0.4, 0.8, 1.4]); return w; });
+    g.userData.wings = wings;
+  } },
+  egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
+};
+// the luggage for this flight
+const MANIFEST = ['suitcase', 'croc', 'duck', 'chicken', 'gnome', 'tuba', 'cactus', 'toilet', 'moose', 'fishtank'];
+// bag states: queue (waiting inside the terminal) → belt → ride (on the truck) → free (physics) / held / gone
+const items = [];
+function spawnBag(type) {
+  const g = new THREE.Group(); plane.add(g); g.visible = false;
+  type.build(g);
+  const it = { kind: 'bag', type, name: type.name, alive: type.alive, extra: type.extra, g, x: BELT_X, y: BELT_Y, z: BELT_START, vx: 0, vy: 0, vz: 0, r: type.r,
+    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10) };
+  g.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
+  items.push(it);
+  return it;
+}
+
+// ---------------------------------------------------------------- passengers
+const FIRST = ['Gary', 'Big Steve', 'Dolores', 'Sir Reginald', 'Gertrude', 'Tiny Tim', 'Bartholomew', 'Mei', 'Doris', 'Kofi', 'Priya', 'Captain Kevin', 'Yuki', 'Nana Joan', 'Carlos', 'Ivan'];
+// passenger states: terminal (wandering) → toBus → inBus → bus → walk/wait → seated, plus held / air / down / gone
+const passengers = [];
+// a limb hanging down from a joint; rotate the returned pivot to move it
+function limb(len, r0, r1, mat, parent, x, y, z) {
+  const pivot = new THREE.Group(); pivot.position.set(x, y, z); parent.add(pivot);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, len, 12), mat); m.position.y = -len / 2; pivot.add(m);
+  sph(r1, mat, 0, -len, 0, pivot);   // rounded joint
+  return pivot;
+}
+// A round, jointed, slightly ridiculous person. g sits at their feet and holds their facing;
+// `core` is a pivot in the middle of the body so they can tumble and lie down.
+function makePassenger(name) {
+  const skin = mat(pick([0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac]));
+  const shirt = mat(new THREE.Color().setHSL(Math.random(), 0.7, 0.55));
+  const pants = mat(new THREE.Color().setHSL(Math.random(), 0.45, 0.35));
+  const shoes = mat(pick([0x222222, 0x5a3a22, 0xeeeeee, 0xff3366]));
+  const hairMat = mat(pick([0x2a1a10, 0x6b4423, 0xd9b26f, 0x111111, 0xcccccc, 0x8a3b12, 0x3399ff, 0xff66cc]), { roughness: .9 });
+  const g = new THREE.Group(); plane.add(g);
+  const core = new THREE.Group(); core.position.y = 0.85; g.add(core);
+  const hips = new THREE.Group(); core.add(hips);
+  sph(0.27, shirt, 0, 0.3, 0, hips, [1, 1.05, 0.9]);                  // a big round tummy
+  sph(0.21, pants, 0, 0.04, 0, hips, [1.1, 0.6, 0.85]);
+  sph(0.05, mat(new THREE.Color().setHSL(Math.random(), 0.7, 0.6)), 0, 0.38, -0.24, hips);   // a button
+  const head = new THREE.Group(); head.position.y = 0.78; hips.add(head);
+  sph(0.2, skin, 0, 0, 0, head, [1, 0.95, 0.95]);
+  // googly eyes, rosy cheeks, a round nose and a mouth that smiles or frowns
+  const pupils = [];
+  for (const s of [-1, 1]) {
+    const white = sph(0.062, M.white, s * 0.075, 0.045, -0.165, head);
+    pupils.push(sph(0.03, M.dark, 0, 0, -0.045, white));
+    sph(0.035, mat(0xff8f9a), s * 0.125, -0.045, -0.145, head);
+  }
+  sph(0.045, Math.random() < 0.15 ? mat(0xff2a2a, { roughness: .3 }) : skin, 0, -0.01, -0.2, head);
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 6, 14, Math.PI), M.dark);
+  mouth.position.set(0, -0.095, -0.17); mouth.rotation.z = Math.PI; head.add(mouth);
+  // hair
+  const style = pick(['cap', 'cap', 'afro', 'mohawk', 'bald', 'bun']);
+  if (style === 'cap' || style === 'bun') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
+    cap.position.y = 0.02; cap.rotation.x = 0.35; head.add(cap);
+    if (style === 'bun') sph(0.08, hairMat, 0, 0.17, 0.14, head);
+  } else if (style === 'afro') sph(0.27, hairMat, 0, 0.08, 0.06, head, [1, 0.95, 0.9]);
+  else if (style === 'mohawk') for (let i = 0; i < 5; i++) box(0.04, 0.1, 0.07, hairMat, 0, 0.2 - Math.abs(i - 2) * 0.015, -0.12 + i * 0.07, head);
+  // hats, glasses and mustaches
+  let prop = null;
+  const hat = Math.random() < 0.55 ? pick(['top', 'party', 'propeller', 'cowboy', 'chef']) : null;
+  const top = style === 'afro' ? 0.3 : 0.18;
+  if (hat === 'top') { cyl(0.13, 0.13, 0.25, M.dark, 0, top + 0.12, 0, head); cyl(0.22, 0.22, 0.02, M.dark, 0, top, 0, head); cyl(0.135, 0.135, 0.04, mat(0xd8342c), 0, top + 0.03, 0, head); }
+  else if (hat === 'party') { const c = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 14), mat(new THREE.Color().setHSL(Math.random(), 0.8, 0.6))); c.position.set(0.03, top + 0.13, 0); c.rotation.z = -0.2; head.add(c); sph(0.03, mat(0xffee55), 0.06, top + 0.29, 0, head); }
+  else if (hat === 'propeller') {
+    const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), mat(0x3366ff)); beanie.position.y = 0.02; head.add(beanie);
+    cyl(0.01, 0.01, 0.08, M.dark, 0, top + 0.05, 0, head);
+    prop = new THREE.Group(); prop.position.y = top + 0.09; head.add(prop);
+    box(0.3, 0.01, 0.05, mat(0xff3333), 0, 0, 0, prop); box(0.05, 0.01, 0.3, mat(0xffee33), 0, 0, 0, prop);
+  }
+  else if (hat === 'cowboy') { cyl(0.3, 0.3, 0.03, mat(0x8a5a2b), 0, top, 0, head); cyl(0.13, 0.15, 0.17, mat(0x8a5a2b), 0, top + 0.09, 0, head); }
+  else if (hat === 'chef') { cyl(0.14, 0.14, 0.2, M.white, 0, top + 0.08, 0, head); sph(0.17, M.white, 0, top + 0.22, 0, head, [1, 0.6, 1]); }
+  if (Math.random() < 0.3) {
+    const shades = Math.random() < 0.4;
+    for (const s of [-1, 1]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.01, 6, 16), M.dark); ring.position.set(s * 0.075, 0.045, -0.225); head.add(ring);
+      if (shades) { const lens = new THREE.Mesh(new THREE.CircleGeometry(0.066, 16), M.dark); lens.position.set(s * 0.075, 0.045, -0.228); lens.rotation.y = Math.PI; head.add(lens); }
+    }
+    box(0.04, 0.012, 0.012, M.dark, 0, 0.05, -0.225, head);
+  }
+  if (Math.random() < 0.25) for (const s of [-1, 1]) { const m = sph(0.05, hairMat, s * 0.045, -0.055, -0.2, head, [1.3, 0.45, 0.6]); m.rotation.z = s * 0.3; }
+  // stubby arms and legs
+  const rig = { core, hips, head, pupils, mouth, prop, arm: [], fore: [], thigh: [], shin: [] };
+  for (const s of [-1, 1]) {
+    const arm = limb(0.24, 0.075, 0.07, shirt, hips, s * 0.3, 0.45, 0);
+    const fore = limb(0.2, 0.065, 0.06, skin, arm, 0, -0.24, 0);
+    sph(0.07, skin, 0, -0.22, 0, fore);
+    const thigh = limb(0.34, 0.11, 0.1, pants, hips, s * 0.12, 0, 0);
+    const shin = limb(0.33, 0.09, 0.085, pants, thigh, 0, -0.34, 0);
+    sph(0.1, shoes, 0, -0.35, -0.05, shin, [1, 0.6, 1.5]);
+    rig.arm.push(arm); rig.fore.push(fore); rig.thigh.push(thigh); rig.shin.push(shin);
+  }
+  const wide = rand(0.9, 1.3);
+  g.scale.set(wide, rand(0.88, 1.06), wide);                             // everyone's a different shape
+  const sprite = new THREE.Sprite(emojiMat('🙂')); sprite.scale.set(0.24, 0.24, 1); sprite.position.y = 0.5; head.add(sprite);
+  const p = { kind: 'pax', name, g, rig, sprite, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 0.3, spin: { x: 0, z: 0 }, phase: rand(0, 10), pose: 'stand', mood: 70,
+    state: 'terminal', seat: null, path: [], then: null, next: null, waitT: 0, downT: 0, off: rand(-22, 18), face: '', calling: null, angry: 0, walkT: 0, tx: 0, tz: 0, wanderT: 0, busSeat: null, bubble: null, bubbleT: 0 };
+  g.traverse(o => { if (o.isMesh) { o.userData.passenger = p; targets.push(o); } });
+  return p;
+}
+function setPose(p, pose) { p.pose = pose; }
+// put the limbs (and the googly eyes) where the current pose wants them
+function animatePax(p) {
+  const r = p.rig, t = S.t + p.phase;
+  let hy = -0.12, th = [0, 0], sh = [0, 0], ar = [0, 0], fo = [0.1, 0.1], az = [0.12, 0.12], tz = [0.04, 0.04];
+  switch (p.pose) {
+    case 'sit': hy = -0.33; th = [1.45, 1.45]; sh = [-1.45, -1.45]; ar = [0.35, 0.35]; fo = [0.9, 0.9]; tz = [0.1, 0.1]; break;
+    case 'walk': {
+      const s = Math.sin(p.walkT * 8);
+      th = [s * 0.55, -s * 0.55]; sh = [-Math.max(0, s) * 0.7, -Math.max(0, -s) * 0.7]; ar = [-s * 0.6, s * 0.6]; fo = [0.4, 0.4]; az = [0.2, 0.2];
+      hy += Math.abs(s) * 0.04;                                           // a bouncy waddle
+      break;
+    }
+    case 'flail':
+      th = [Math.sin(t * 13) * 1.1, Math.sin(t * 11 + 1) * 1.1]; sh = [-0.3 - Math.abs(Math.sin(t * 9)) * 0.9, -0.3 - Math.abs(Math.cos(t * 8)) * 0.9];
+      ar = [Math.sin(t * 15) * 1.6, Math.cos(t * 14) * 1.6]; az = [1.1 + Math.sin(t * 17) * 0.7, 1.1 + Math.cos(t * 16) * 0.7]; fo = [0.5 + Math.sin(t * 12) * 0.5, 0.5 + Math.cos(t * 12) * 0.5]; tz = [0.4, 0.4];
+      break;
+    case 'down': th = [0.15, -0.1]; sh = [-0.25, -0.1]; ar = [0.2, -0.4]; az = [1.35, 0.9]; fo = [0.3, 0.7]; tz = [0.35, 0.45]; break;
+    case 'held': th = [0.3 + Math.sin(t * 3) * 0.25, 0.2 + Math.cos(t * 3) * 0.25]; sh = [-0.5, -0.4]; ar = [Math.sin(t * 3) * 0.5, Math.cos(t * 3) * 0.5]; az = [0.4, 0.4]; fo = [0.2, 0.2]; break;
+    case 'chute': th = [Math.sin(t * 1.5) * 0.3, -Math.sin(t * 1.5) * 0.3]; sh = [-0.3, -0.3]; az = [2.6, 2.6]; fo = [0.4, 0.4]; break;
+    default: ar = [Math.sin(t * 1.3) * 0.05, -Math.sin(t * 1.3) * 0.05];   // standing, breathing
+  }
+  r.hips.position.y = hy;
+  for (let i = 0; i < 2; i++) {
+    const s = i ? 1 : -1;
+    r.thigh[i].rotation.set(th[i], 0, s * tz[i]);
+    r.shin[i].rotation.x = sh[i];
+    r.arm[i].rotation.set(ar[i], 0, s * az[i]);
+    r.fore[i].rotation.x = fo[i];
+  }
+  const wild = p.pose === 'flail' || p.pose === 'held' ? 0.026 : 0.01;
+  r.pupils.forEach((e, i) => e.position.set(Math.sin(t * 7 + i * 2) * wild, Math.cos(t * 5.3 + i) * wild, -0.045));
+  const shocked = p.pose === 'flail' || p.pose === 'held' || p.pose === 'chute';
+  r.mouth.rotation.z = shocked || p.mood > 45 ? Math.PI : 0;
+  r.mouth.scale.set(1, shocked ? 2.4 : 1, 1);
+  if (r.prop) r.prop.rotation.y = t * (p.pose === 'flail' ? 40 : 12);
+}
+// speech bubbles over people's heads
+const bubbleCache = {};
+function bubbleMat(text) {
+  if (!bubbleCache[text]) {
+    const tex = canvasTex(1024, 128, (g, w, h) => {
+      g.font = 'bold 44px "Comic Sans MS", "Segoe UI", sans-serif';
+      const tw = Math.min(w - 20, g.measureText(text).width + 40), x0 = (w - tw) / 2;
+      g.fillStyle = '#fff'; g.strokeStyle = '#222'; g.lineWidth = 5;
+      g.beginPath(); g.roundRect ? g.roundRect(x0, 8, tw, 84, 30) : g.rect(x0, 8, tw, 84); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(w / 2 - 14, 90); g.lineTo(w / 2, 120); g.lineTo(w / 2 + 14, 90); g.fill();
+      g.fillStyle = '#222'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, 52);
+    });
+    bubbleCache[text] = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  }
+  return bubbleCache[text];
+}
+function shout(p, text, dur = 2.4) {
+  if (!p.bubble) { p.bubble = new THREE.Sprite(); p.bubble.scale.set(3.6, 0.45, 1); p.bubble.position.y = 0.85; p.bubble.renderOrder = 997; p.rig.head.add(p.bubble); }
+  p.bubble.material = bubbleMat(text); p.bubble.visible = true; p.bubbleT = dur; p.bubbleText = text;
+}
+const YELLS = {
+  thrown: ['WHEEEEE!', 'AAAAAAAH!', 'I WANT A REFUND!', 'NOT THE FACE!', 'I CAN FLY!', 'MY HAIR!', 'THIS IS IN THE CONTRACT?!'],
+  landed: ['Ow.', 'I\'m OK!', 'Again! Again!', 'My dignity…', '10/10 would fly again', 'I saw my life flash by'],
+  picked: ['Put me down!', 'Ooh, a lift!', 'Unhand me!', 'Is this included in the ticket?', 'Careful, I bruise like a peach'],
+  chute: ['Worth it.', 'See you at baggage claim!', 'Best. Flight. Ever.', 'Tell my cat I love her'],
+  airport: ['Is that our plane? It looks… used.', 'I packed my emotional support crocodile.', 'Is the pilot ALSO the bus driver?', 'I hope they serve snacks.', 'Has anyone seen my chicken?', 'Gate 404… the gate not found?'],
+  flight: ['I can see my house!', 'Was that engine always on fire?', 'Who ordered the fish?', 'I think I left the oven on.', 'This is better than a rollercoaster!', 'The captain waved at me from the wing!', 'Is it normal to hear quacking?'],
+  scary: ['IT\'S FINE. EVERYTHING IS FINE.', 'Should the wing be doing that?', 'I\'d like to speak to the manager of the sky.', 'Hold me, Gary!', 'MY DRINK! MY DRINK!'],
+  croc: ['CROCODILE!!', 'IT\'S EATING MY SHOE!', 'Nice crocodile… nice…', 'Is the crocodile in first class?'],
+};
+// limp: the body goes flying, tumbling end over end with its arms and legs flailing
+function ragdoll(p, vx, vy, vz) {
+  p.state = 'air'; p.pose = 'flail';
+  p.vx = vx; p.vy = vy; p.vz = vz;
+  p.spin = { x: rand(-7, 7), z: rand(-7, 7) };
+  shout(p, pick(YELLS.thrown));
+  slideWhistle(true);
+}
+const PAX_COUNT = 8;
+(function populate() {
+  const names = [...FIRST].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < PAX_COUNT; i++) {
+    const p = makePassenger(names[i]);
+    do { p.x = rand(-17, 8); p.z = rand(TERM.z0 + 1.5, TERM.z1 - 1); } while (airportBlocked(p.x, p.z));
+    p.y = GROUND; p.tx = p.x; p.tz = p.z;
+    passengers.push(p);
+  }
+  for (const k of MANIFEST) spawnBag(BAGS[k]);
+})();
+
+// ---------------------------------------------------------------- carrying & throwing
+const fwd = new THREE.Vector3();
+function lookDir(pp = P) { return fwd.set(-Math.sin(pp.yaw) * Math.cos(pp.pitch), Math.sin(pp.pitch), -Math.cos(pp.yaw) * Math.cos(pp.pitch)); }
+function freeSlot(it) { if (it.slot) { it.slot.item = null; it.slot = null; } }
+// `who` is whoever grabbed it: LOCAL (you) or a remote player
+function pickUp(obj, who = LOCAL) {
+  if (obj.kind === 'pax') {
+    if (obj.seat) { obj.seat.occupant = null; obj.seat = null; }
+    if (obj.busSeat) { obj.busSeat.p = null; obj.busSeat = null; }
+    if (obj.state === 'seated' && inAir()) { S.needs.calm -= 4; say(`${obj.name}: "Put me DOWN!"`); }
+    obj.calling = null; setPose(obj, 'stand');
+    shout(obj, pick(YELLS.picked));
+  } else { freeSlot(obj); if (obj.alive && obj.alive.kind === 'chicken') quack(); }
+  obj.state = 'held'; who.held = obj; obj.holder = who;
+  beep(500, .08, 'sine', .05);
+}
+function throwHeld(strength, who = LOCAL) {
+  const o = who.held; if (!o) return;
+  who.held = null; o.holder = null;
+  const pp = who.pose, d = lookDir(pp);
+  o.x = pp.x; o.z = pp.z; o.y = pp.y + 1.0;
+  const vx = d.x * strength, vz = d.z * strength, vy = d.y * strength + (strength > 2 ? 2.5 : 0);
+  o.g.rotation.set(0, pp.yaw, 0);
+  if (o.kind === 'pax') {
+    if (strength > 2) ragdoll(o, vx, vy, vz);
+    else { o.state = 'air'; o.pose = 'stand'; o.vx = vx; o.vy = vy; o.vz = vz; o.spin = { x: 0, z: 0 }; o.rig.core.rotation.set(0, 0, 0); }
+  } else { o.state = 'free'; o.vx = vx; o.vy = vy; o.vz = vz; }
+  if (strength > 2) beep(300, .15, 'triangle', .06);
+}
+function updateHeld() { for (const who of [LOCAL, ...NET.remotes]) holdInFront(who); }
+function holdInFront(who) {
+  const o = who.held; if (!o) return;
+  const pp = who.pose, d = lookDir(pp);
+  o.g.position.set(pp.x + d.x * 1.0, pp.y + EYE - 0.55 + d.y * 0.8, pp.z + d.z * 1.0);
+  if (o.kind === 'pax') {
+    // carried sideways across your arms, legs dangling
+    o.g.rotation.set(0, pp.yaw + Math.PI / 2, 0);
+    o.rig.core.rotation.set(0, 0, Math.PI / 2);
+    o.g.position.y -= 1.0;
+    o.pose = 'held'; animatePax(o);
+  } else { o.g.rotation.set(0, pp.yaw, 0); if (o.alive) { const ud = o.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.abs(Math.sin(S.t * 9)) * 0.6; if (ud.wings) ud.wings.forEach((w, i) => w.rotation.z = (i ? -1 : 1) * Math.abs(Math.sin(S.t * 25)) * 1.2); } }
+}
+
+// ---------------------------------------------------------------- luggage
+function overboard(o) {
+  o.state = 'gone';
+  for (let i = targets.length - 1; i >= 0; i--) if (targets[i].userData.item === o || targets[i].userData.passenger === o) targets.splice(i, 1);
+}
+function updateConveyor(dt) {
+  beltTex.offset.y -= dt * 0.8;
+  S.beltSpawnT -= dt;
+  const onBelt = items.filter(i => i.state === 'belt').sort((a, b) => a.z - b.z);
+  if (S.beltSpawnT <= 0 && !onBelt.some(i => i.z > BELT_START - 1)) {
+    const next = items.find(i => i.state === 'queue');
+    if (next) { next.state = 'belt'; next.z = BELT_START; next.g.visible = true; onBelt.push(next); }
+    S.beltSpawnT = 1.6;
+  }
+  let limit = BELT_END;
+  for (const it of onBelt) {
+    it.z = Math.max(limit, it.z - 0.9 * dt); limit = it.z + 0.9;
+    it.x = BELT_X; it.y = BELT_Y;
+    it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
+  }
+  // drop the front bag onto the truck when its bed is parked at the end of the belt
+  S.beltLoadT -= dt;
+  const front = onBelt[0], bed = vehPoint(truck, 0, 0.85);
+  if (front && front.z <= BELT_END + 0.05 && S.beltLoadT <= 0 && Math.abs(truck.v) < 0.4 && Math.hypot(bed.x - BELT_X, bed.z - (BELT_END - 1.4)) < 2.6) {
+    const slot = truck.slots.find(s => !s.item);
+    if (slot) { slot.item = front; front.slot = slot; front.state = 'ride'; S.beltLoadT = 0.5; beep(380, .08, 'triangle', .05); }
+  }
+}
+function updateItems(dt) {
+  if (S.phase === 'airport') updateConveyor(dt);
+  for (const it of items) {
+    if (it.state === 'ride') {
+      const p = vehPoint(truck, it.slot.x, it.slot.z);
+      it.x = p.x; it.z = p.z; it.y = BED_TOP;
+      it.g.position.set(p.x, BED_TOP, p.z); it.g.rotation.set(0, truck.h + it.spinY * 0.1, 0);
+      continue;
+    }
+    if (it.state !== 'free') continue;
+    // a bag thrown onto the truck bed stays there
+    if (S.phase === 'airport' && it.vy <= 0 && it.y < BED_TOP + 0.25 && it.y > BED_TOP - 0.4) {
+      const l = vehLocal(truck, it.x, it.z);
+      const slot = Math.abs(l.x) < 1.0 && l.z > -0.6 && l.z < 2.3 && truck.slots.find(s => !s.item);
+      if (slot) { slot.item = it; it.slot = slot; it.state = 'ride'; continue; }
+    }
+    cabinForces(it, force);
+    it.vx += force.x * dt; it.vz += force.z * dt;
+    const grounded = it.y <= (groundAt(it.x, it.z) ?? -99) + 0.03;
+    if (grounded) { const fr = Math.max(0, 1 - 3.5 * dt); it.vx *= fr; it.vz *= fr; }
+    if (it.alive) liveCargo(it, dt, grounded);
+    const [hx, hz] = moveBody(it, it.vx * dt, it.vz * dt);
+    if (hx) it.vx *= -0.3;
+    if (hz) it.vz *= -0.3;
+    if ((hx || hz) && it.alive) it.wanderT = 0;   // bumped into something: pick a new direction
+    fallBody(it, dt);
+    it.spinY += (Math.abs(it.vx) + Math.abs(it.vz)) * dt * 0.8;
+    it.g.position.set(it.x, it.y, it.z);
+    it.g.rotation.set(0, it.alive ? it.heading : it.spinY, 0);
+    if (groundAt(it.x, it.z) === null && it.y < -3) {
+      netEvent('lost', items.indexOf(it));
+      overboard(it);
+      toDebris(it.g, new THREE.Vector3(rand(-2, 2), -2, 25));
+      if (inAir() && it.alive && it.alive.kind === 'croc') say('🐊 The crocodile has left the plane. Nobody is sad about this.', 'good');
+      else if (inAir() && !it.extra) { S.lostBags++; S.needs.calm -= 6; say(`🧳 Somebody's ${it.name} just fell out of the plane!`, 'bad'); }
+    }
+  }
+  // bags don't overlap each other
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const a = items[i], b = items[j];
+    if (a.state !== 'free' || b.state !== 'free' || Math.abs(a.y - b.y) > 0.6) continue;
+    const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = (a.r + b.r) * 0.75;
+    if (d < min && d > 0.001) {
+      const push = (min - d) / 2, nx = dx / d * push, nz = dz / d * push;
+      if (canGo(a.x, a.z, a.y, a.x - nx, a.z - nz)) { a.x -= nx; a.z -= nz; }
+      if (canGo(b.x, b.z, b.y, b.x + nx, b.z + nz)) { b.x += nx; b.z += nz; }
+    }
+  }
+}
+// animals: the crocodile crawls about snapping its jaws, the chicken hops, flaps and lays eggs
+function liveCargo(it, dt, grounded) {
+  const ud = it.g.userData, t = S.t + it.phase;
+  if ((it.wanderT -= dt) <= 0) { it.wanderT = rand(1.5, 4); it.heading = rand(0, Math.PI * 2); it.resting = Math.random() < 0.3; }
+  if (grounded && !it.resting) {
+    it.vx = -Math.sin(it.heading) * it.alive.speed; it.vz = -Math.cos(it.heading) * it.alive.speed;
+    if (it.alive.kind === 'chicken' && Math.random() < dt * 1.5) it.vy = rand(1.5, 3);
+  }
+  if (ud.jaw) ud.jaw.rotation.x = Math.max(0, Math.sin(t * 5)) * 0.55;
+  if (ud.tail) ud.tail.rotation.y = Math.sin(t * 3) * 0.35;
+  if (ud.wings) ud.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * (grounded ? 0.1 : Math.abs(Math.sin(t * 25)) * 1.2); });
+  if (it.alive.kind === 'chicken' && grounded && (it.eggT -= dt) <= 0) {
+    it.eggT = rand(25, 40);
+    const egg = spawnBag(BAGS.egg);
+    Object.assign(egg, { state: 'free', x: it.x, y: it.y + 0.1, z: it.z }); egg.g.visible = true;
+    quack(); say('🥚 The chicken laid an egg!');
+  }
+  // passengers do not enjoy sharing the cabin with a crocodile
+  if (it.alive.kind === 'croc' && Math.random() < dt * 0.5) {
+    const near = passengers.find(p => p.state !== 'gone' && Math.hypot(p.x - it.x, p.z - it.z) < 2.2);
+    if (near) shout(near, pick(YELLS.croc));
+  }
+}
+const crocLoose = () => inAir() && items.some(i => i.alive && i.alive.kind === 'croc' && i.state === 'free' && insideHull(i.x, i.z) && i.z < CARGO && i.z > BULK);
+// a sudden lurch: luggage and standing passengers go flying
+function jerk(k) {
+  for (const it of items) if (it.state === 'free') { it.vx += rand(-1, 1) * k * 3; it.vz += rand(-1, 1) * k * 3; it.vy += rand(0, 1) * k * 2.5; }
+  if (k > 0.6 && S.phase !== 'airport') for (const p of passengers) if (p.state === 'walk' || p.state === 'wait') {
+    ragdoll(p, rand(-1, 1) * k * 2, k * 2, rand(-1, 1) * k * 2);
+  }
+}
+
+// ---------------------------------------------------------------- passenger behaviour
+function sendToSeat(p) {
+  let seat = p.seat;
+  if (!seat) {
+    const free = seats.filter(s => !s.occupant);
+    if (!free.length) { p.state = 'wait'; p.waitT = 999; return; }
+    seat = free.reduce((a, b) => Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? b : a);
+    seat.occupant = p; p.seat = seat;
+  }
+  const z0 = clamp(p.z, BULK + 0.6, REAR - 0.6);
+  p.path = [{ x: 0, z: z0 }, { x: 0, z: seat.z - 0.7 }, { x: seat.x, z: seat.z - 0.7 }, { x: seat.x, z: seat.z }];
+  p.then = 'sit';
+  p.state = 'walk'; setPose(p, 'stand');
+}
+function ejectPassenger(p, msg) {
+  netEvent('eject', passengers.indexOf(p));
+  if (p.seat) { p.seat.occupant = null; p.seat = null; }
+  overboard(p);
+  // upright under a proper canopy, arms up holding the lines
+  p.g.rotation.set(0, p.g.rotation.y, 0);
+  p.rig.core.rotation.set(0, 0, 0);
+  p.pose = 'chute'; animatePax(p);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42),
+    std(pick([0xff4040, 0xffb020, 0x30a0ff, 0x40d070]), { side: THREE.DoubleSide, roughness: .8 }));
+  canopy.scale.y = 0.6; canopy.position.y = 3.3; p.g.add(canopy);
+  const rimY = 3.3 + 0.6 * 1.3 * Math.cos(Math.PI * 0.42), rimR = 1.3 * Math.sin(Math.PI * 0.42) * 0.95;
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2, from = new THREE.Vector3(Math.sign(Math.cos(a)) * 0.2, 2.1, 0), to = new THREE.Vector3(Math.cos(a) * rimR, rimY, Math.sin(a) * rimR);
+    const dir = to.clone().sub(from), line = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, dir.length(), 4), M.dark);
+    line.position.copy(from).addScaledVector(dir, 0.5);
+    line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+    p.g.add(line);
+  }
+  p.sprite.visible = false;
+  shout(p, pick(YELLS.chute), 99);
+  toDebris(p.g, new THREE.Vector3(rand(-3, 3), -3, 22), 10);
+  falling[falling.length - 1].chute = true;
+  S.ejected++; S.needs.calm -= 25;
+  say(msg || `🪂 ${p.name} left the plane. Their parachute opened. They will be writing a strongly-worded letter.`, 'bad');
+}
+// where a passenger ends up after being thrown, dropped or knocked over
+function landed(p) {
+  if (insideHull(p.x, p.z) || onRamp(p.x, p.z)) return sendToSeat(p);
+  if (S.phase === 'airport') { p.state = 'terminal'; p.tx = p.x; p.tz = p.z; setPose(p, 'stand'); return; }
+  ejectPassenger(p, `🌬 The wind blew ${p.name} right off the plane! A parachute pops open. 🪂`);
+}
+function walkToward(p, tx, tz, speed, dt) {
+  const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
+  if (d < 0.06) return true;
+  const st = Math.min(d, speed * dt);
+  p.x += dx / d * st; p.z += dz / d * st;
+  p.g.rotation.set(0, Math.atan2(-dx, -dz), 0);
+  p.walkT += dt;
+  return d - st < 0.06;
+}
+function stepPassenger(p, dt) {
+  if (p.state === 'air') {
+    cabinForces(p, force);
+    p.vx += force.x * dt; p.vz += force.z * dt;
+    const [hx, hz] = moveBody(p, p.vx * dt, p.vz * dt);
+    if (hx) p.vx *= -0.3;
+    if (hz) p.vz *= -0.3;
+    const grounded = fallBody(p, dt);
+    // tumble around the middle of the body
+    const core = p.rig.core;
+    core.rotation.x += p.spin.x * dt; core.rotation.z += p.spin.z * dt;
+    if (grounded) {
+      p.vx *= 0.8; p.vz *= 0.8; p.spin.x *= 0.7; p.spin.z *= 0.7;
+      if (Math.hypot(p.vx, p.vz) < 0.6) {
+        if (inAir() && !insideHull(p.x, p.z) && !onRamp(p.x, p.z)) return landed(p);
+        // flop down flat for a moment
+        const wasThrown = !!(p.spin.x || p.spin.z);
+        p.state = 'down'; p.pose = 'down'; p.downT = wasThrown ? rand(1.4, 2.2) : 0.01;
+        if (wasThrown) { boing(); shout(p, pick(YELLS.landed)); }
+        core.rotation.set(Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2, 0, rand(-0.3, 0.3));
+      }
+    }
+    if (groundAt(p.x, p.z) === null && p.y < -3) return ejectPassenger(p);
+    p.g.position.set(p.x, p.y, p.z);
+    return;
+  }
+  if (p.state === 'down') {
+    p.g.position.set(p.x, p.y - 0.6, p.z);
+    if ((p.downT -= dt) <= 0) { p.rig.core.rotation.set(0, 0, 0); p.pose = 'stand'; landed(p); }
+    return;
+  }
+  if (p.state === 'terminal') {
+    p.wanderT -= dt;
+    if (p.wanderT <= 0) {
+      p.wanderT = rand(2, 7);
+      const inside = inTerminal(p.x, p.z);
+      p.tx = clamp(p.x + rand(-4, 4), inside ? TERM.x0 + 1 : -50, inside ? 9 : 50);
+      p.tz = clamp(p.z + rand(-4, 4), inside ? TERM.z0 + 1 : -25, inside ? TERM.z1 - 1 : TERM.z0 - 1);
+    }
+    const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
+    p.pose = d > 0.1 ? 'walk' : 'stand';
+    if (d > 0.1) {
+      const st = Math.min(d, 1.0 * dt), [hx, hz] = moveBody(p, dx / d * st, dz / d * st);
+      if (hx || hz) p.wanderT = 0;
+      p.g.rotation.set(0, Math.atan2(-dx, -dz), 0); p.walkT += dt;
+    }
+    fallBody(p, dt);
+    p.g.position.set(p.x, p.y, p.z);
+    return;
+  }
+  if (p.state === 'toBus') {
+    const wp = p.path[0] || busDoor(bus, 0.7);
+    const arrived = walkToward(p, wp.x, wp.z, 1.6, dt);
+    p.pose = arrived && !p.path.length ? 'stand' : 'walk';
+    if (arrived) {
+      if (p.path.length) p.path.shift();
+      else if (busDoorOpen()) {
+        // through the door and down the aisle to a free seat
+        const seat = bus.seats.find(s => !s.p);
+        if (seat) {
+          seat.p = p; p.busSeat = seat; p.state = 'inBus';
+          p.lx = bus.w + 0.7; p.lz = -3.1;
+          p.path = [{ x: 0.9, z: -3.1 }, { x: 0, z: -2.6 }, { x: 0, z: seat.z }, { x: seat.x, z: seat.z }];
+        } else { p.state = 'terminal'; say(`${p.name} couldn't fit on the bus.`); }
+      }
+    }
+    p.y = GROUND;
+    p.g.position.set(p.x, p.y, p.z);
+    return;
+  }
+  if (p.state === 'inBus' || p.state === 'outBus') {
+    // walking inside the bus, in the bus's own frame so it still works if the bus moves
+    const wp = p.path[0];
+    const throughDoor = wp && (p.state === 'inBus' ? p.lx > bus.w : wp.x > bus.w);
+    if (wp && !(throughDoor && !busDoorOpen())) {
+      const dx = wp.x - p.lx, dz = wp.z - p.lz, d = Math.hypot(dx, dz), st = Math.min(d, 1.3 * dt);
+      if (d > 0.001) { p.lx += dx / d * st; p.lz += dz / d * st; p.walkT += dt; p.faceL = Math.atan2(-dx, -dz); }
+      if (d - st < 0.05) p.path.shift();
+      p.pose = 'walk';
+    } else p.pose = 'stand';
+    const w = vehPoint(bus, p.lx, p.lz);
+    p.x = w.x; p.z = w.z; p.y = Math.abs(p.lx) <= bus.w ? bus.floor : GROUND;
+    p.g.position.set(p.x, p.y, p.z); p.g.rotation.set(0, bus.h + (p.faceL || 0), 0);
+    if (!p.path.length) {
+      if (p.state === 'inBus') { p.state = 'bus'; p.pose = 'sit'; beep(700, .05, 'sine', .04); }
+      else { p.state = 'walk'; p.then = 'board'; p.y = GROUND; p.path = [{ x: RAMP_FOOT.x, z: RAMP_FOOT.z }]; }
+    }
+    return;
+  }
+  if (p.state === 'bus') {
+    const s = vehPoint(bus, p.busSeat.x, p.busSeat.z);
+    p.x = s.x; p.z = s.z; p.y = bus.floor; p.pose = 'sit';
+    p.g.position.set(s.x, p.y, s.z); p.g.rotation.set(0, bus.h, 0);
+    return;
+  }
+  if (p.state === 'walk') {
+    p.pose = 'walk';
+    const wp = p.path[0];
+    if (wp && walkToward(p, wp.x, wp.z, 1.4, dt)) p.path.shift();
+    if (!p.path.length) {
+      if (p.then === 'sit') { p.state = 'seated'; p.pose = 'sit'; p.x = p.seat.x; p.z = p.seat.z; }
+      else if (p.then === 'board') sendToSeat(p);
+      else if (p.then === 'lav') { p.state = 'wait'; p.waitT = rand(4, 7); p.next = () => sendToSeat(p); }
+    }
+    p.y = groundAt(p.x, p.z) ?? p.y;
+    p.g.position.set(p.x, p.y, p.z);
+    // a hole in the wall nearby drags walkers out
+    if (hole.seg && inAir() && Math.hypot((hole.side === 'L' ? -W : W) - p.x, hole.seg.z - p.z) < 3)
+      ragdoll(p, (hole.side === 'L' ? -1 : 1) * 4, 1, 0);
+    return;
+  }
+  if (p.state === 'wait') {
+    p.pose = 'stand';
+    p.waitT -= dt;
+    if (p.waitT <= 0) { const n = p.next; p.next = null; if (n) n(); else sendToSeat(p); }
+    return;
+  }
+  if (p.state === 'seated') { p.pose = 'sit'; p.g.position.set(p.seat.x, 0, p.seat.z); p.g.rotation.set(0, 0, 0); }
+}
+function updatePassengers(dt) {
+  for (const p of passengers) {
+    if (p.state === 'gone' || p.state === 'held') continue;
+    stepPassenger(p, dt);
+    if (p.state !== 'gone') animatePax(p);
+    if (p.bubble && p.bubble.visible && (p.bubbleT -= dt) <= 0) p.bubble.visible = false;
+  }
+}
+
+// ---------------------------------------------------------------- call buttons
+function startCall() {
+  const free = passengers.filter(p => p.state === 'seated' && !p.calling);
+  if (!free.length) return;
+  const p = pick(free);
+  p.calling = { t: 0, text: pick(CALLS) };
+  p.sprite.material = emojiMat('🔔', true);
+  p.sprite.renderOrder = 998;
+  p.face = '🔔';
+  beep(1320, .1, 'sine', .05); setTimeout(() => beep(1050, .15, 'sine', .05), 130);
+}
+function resolveCall(p) {
+  p.calling = null; p.face = ''; p.sprite.renderOrder = 0;
+  S.needs.calm += 6; S.needs.comfort += 8;
+  chime();
+  say(pick([`${p.name}: "Oh, thank you so much!"`, `${p.name}: "You're the best captain ever."`, `${p.name}: "Wait, aren't you supposed to be flying?"`]), 'good');
+}
