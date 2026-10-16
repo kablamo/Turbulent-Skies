@@ -216,6 +216,7 @@ addEventListener('keydown', e => {
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
   keys[k] = true;
   if (e.repeat) return;
+  if (k === 'enter' && S.running && !S.over && S.paused) resume();
   if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else { showPause(); document.exitPointerLock(); } }
   if (k === 'e') S.press = true;
   if (k === 'q') S.drop = true;
@@ -246,7 +247,7 @@ function showPause() {
   if (S.paused) return;
   S.paused = true;
   if (locked()) document.exitPointerLock();
-  $('ovBox').innerHTML = '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button>';
+  $('ovBox').innerHTML = '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button><p style="opacity:.7;font-size:13px">or press Enter / P</p>';
   $('resumeBtn').onclick = resume;
   $('overlay').style.display = 'flex';
 }
