@@ -34,14 +34,14 @@ const R = 2.6, CY = 1.3, SX = 1.45, EYE = 1.6, TOTAL = 300;
 const W = 2.25 * SX;                                             // where the wall meets the floor
 const wallX = y => SX * Math.sqrt(Math.max(0, R * R - (y - CY) ** 2));
 const NOSE = -12, BULK = -8.7, GALLEY = -6.8, CARGO = 6.8, REAR = 12;
-const ROOT = 3.2, WING_IN = 16, WING_OUT = 21, ENG_X = 7.6, FUEL_X = 11.6;
+const ROOT = 3.2, WING_IN = 20, WING_OUT = 26, ENG_X = 7.6, FUEL_X = 11.6, BBQ_X = 15;   // big wings: room for a barbecue
 const RAMP_LEN = 3.0, RAMP_OPEN = 2.13, RAMP_HW = 2.4;           // ramp touches the tarmac when open
 const RAMP_ANG = RAMP_OPEN - Math.PI / 2, RAMP_SLOPE = Math.tan(RAMP_ANG), RAMP_RUN = RAMP_LEN * Math.cos(RAMP_ANG);
 const RAMP_FOOT = { x: 0, z: REAR + RAMP_RUN + 1.2 };
 const GROUND = -1.6;                                             // tarmac height under the parked plane
 const ROWS = [-6.0, -4.3, -2.6, 2.6, 4.3, 6.0], SEAT_X = [-2.4, -1.5, 1.5, 2.4];
-const le = x => -3 + (x - ROOT) * 0.35;   // wing leading edge z at |x|
-const te = x => 4 + (x - ROOT) * 0.15;    // wing trailing edge z at |x|
+const le = x => -4 + (x - ROOT) * 0.3;    // wing leading edge z at |x|
+const te = x => 5.5 + (x - ROOT) * 0.1;   // wing trailing edge z at |x|
 // airport layout (the parked plane sits at the origin)
 // the terminal sits well back from the plane, so you need the vehicles to get between them
 const TERM = { x0: -20, x1: 20, z0: 85, z1: 101 }, TERM_DOOR = { x: 0, z: 83.5 };

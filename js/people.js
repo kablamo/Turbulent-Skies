@@ -177,16 +177,73 @@ function makePassenger(name) {
     sph(0.1, shoes, 0, -0.35, -0.05, shin, [1, 0.6, 1.5]);
     rig.arm.push(arm); rig.fore.push(fore); rig.thigh.push(thigh); rig.shin.push(shin);
   }
+  // stuff people bring on holiday
+  const acc = [];
+  if (Math.random() < 0.8) acc.push(pick(ACCESSORIES));
+  if (Math.random() < 0.35) { const b = pick(ACCESSORIES); if (!acc.includes(b) && !(ON_BACK.includes(b) && acc.some(a => ON_BACK.includes(a)))) acc.push(b); }
+  const accCol = new THREE.Color().setHSL(Math.random(), 0.75, 0.5);
+  buildAccessories(hips, acc, PROC_BODY, accCol);
+  if (acc.includes('balloon')) buildBalloon(core, accCol);
   const wide = rand(0.9, 1.3);
   g.scale.set(wide, rand(0.88, 1.06), wide);                             // everyone's a different shape
   const sprite = new THREE.Sprite(emojiMat('🙂')); sprite.scale.set(0.24, 0.24, 1); sprite.position.y = 0.5; head.add(sprite);
   const p = { kind: 'pax', name, g, rig, sprite, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 0.3, spin: { x: 0, z: 0 }, phase: rand(0, 10), pose: 'stand', mood: 70,
     state: 'terminal', seat: null, path: [], then: null, next: null, waitT: 0, downT: 0, off: rand(-22, 18), face: '', calling: null, angry: 0, walkT: 0, tx: 0, tz: 0, wanderT: 0, busSeat: null, bubble: null, bubbleT: 0 };
   p.mats = { skin, shirt, pants, shoes, hair: hairMat };   // a custom Blender model (models.js) borrows these colors
+  p.acc = acc; p.accCol = accCol;
   g.traverse(o => { if (o.isMesh) { o.userData.passenger = p; targets.push(o); } });
   return p;
 }
 function setPose(p, pose) { p.pose = pose; }
+
+// ---------------------------------------------------------------- accessories
+const ACCESSORIES = ['backpack', 'backpack', 'pillow', 'balloon', 'camera', 'fanny', 'floatie', 'guitar'];
+const ON_BACK = ['backpack', 'guitar'];
+// where things go on the built-in round body (in the hips' space; people face -z)
+const PROC_BODY = { cx: 0, cz: 0, r: 0.27, rz: 0.24, yMid: 0.32, yWaist: 0.1, yNeck: 0.6, neckR: 0.13, s: 1 };
+// build accessories onto `parent`, using body measurements `d` (shared by the built-in body and Blender models)
+function buildAccessories(parent, acc, d, col) {
+  const s = d.s, back = d.cz + d.rz, front = d.cz - d.rz;
+  const c = mat(col), dark = mat(col.clone().multiplyScalar(0.55)), strap = M.dark;
+  for (const a of acc) {
+    if (a === 'backpack') {
+      box(0.42 * s, 0.5 * s, 0.2 * s, c, d.cx, d.yMid, back + 0.08 * s, parent);
+      box(0.32 * s, 0.22 * s, 0.07 * s, dark, d.cx, d.yMid - 0.1 * s, back + 0.2 * s, parent);    // front pocket
+      for (const sx of [-1, 1]) box(0.05 * s, 0.05 * s, (d.rz * 2 + 0.1) * s, strap, d.cx + sx * 0.14 * s, d.yMid + 0.24 * s, d.cz + 0.02, parent);   // straps over the shoulders
+    } else if (a === 'guitar') {
+      const gt = new THREE.Group(); gt.position.set(d.cx, d.yMid, back + 0.09 * s); gt.rotation.z = 0.5; parent.add(gt);
+      const wood = mat(0xb5651d);
+      sph(0.2 * s, wood, 0, -0.12 * s, 0, gt, [1, 1.2, 0.35]); sph(0.15 * s, wood, 0, 0.14 * s, 0, gt, [1, 1, 0.35]);
+      cyl(0.05 * s, 0.05 * s, 0.012, M.dark, 0, 0.0, 0.075 * s, gt).rotation.x = Math.PI / 2;
+      box(0.06 * s, 0.6 * s, 0.04 * s, mat(0x3a2410), 0, 0.55 * s, 0, gt); box(0.1 * s, 0.14 * s, 0.05 * s, mat(0x3a2410), 0, 0.9 * s, 0, gt);
+      box(0.04 * s, 0.04 * s, (d.rz * 2 + 0.1) * s, strap, d.cx - 0.12 * s, d.yMid + 0.2 * s, d.cz, parent);
+    } else if (a === 'pillow') {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(d.neckR + 0.05 * s, 0.07 * s, 8, 16, Math.PI * 1.6), c);
+      t.position.set(d.cx, d.yNeck, d.cz); t.rotation.set(Math.PI / 2, 0, Math.PI * 0.7); parent.add(t);
+    } else if (a === 'camera') {
+      box(0.18 * s, 0.12 * s, 0.08 * s, M.dark, d.cx, d.yMid + 0.05 * s, front - 0.04 * s, parent);
+      cyl(0.045 * s, 0.045 * s, 0.07 * s, mat(0x333333), d.cx, d.yMid + 0.05 * s, front - 0.1 * s, parent).rotation.x = Math.PI / 2;
+      box(0.03 * s, 0.03 * s, 0.03 * s, M.red, d.cx + 0.06 * s, d.yMid + 0.12 * s, front - 0.05 * s, parent);
+    } else if (a === 'fanny') {
+      sph(0.12 * s, c, d.cx, d.yWaist, front - 0.02 * s, parent, [1.4, 0.7, 0.6]);
+      const belt = new THREE.Mesh(new THREE.TorusGeometry(d.r * 1.02, 0.02 * s, 6, 24), strap);
+      belt.position.set(d.cx, d.yWaist, d.cz); belt.rotation.x = Math.PI / 2; belt.scale.y = d.rz / d.r; parent.add(belt);
+    } else if (a === 'floatie') {
+      // a rubber-duck pool ring around the waist
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(d.r * 1.15, 0.1 * s, 10, 24), M.yellow);
+      ring.position.set(d.cx, d.yWaist + 0.05 * s, d.cz); ring.rotation.x = Math.PI / 2; ring.scale.y = d.rz / d.r; parent.add(ring);
+      sph(0.1 * s, M.yellow, d.cx, d.yWaist + 0.18 * s, front - 0.14 * s, parent);
+      box(0.08 * s, 0.03 * s, 0.07 * s, mat(0xff8a1a), d.cx, d.yWaist + 0.17 * s, front - 0.25 * s, parent);
+      for (const sx of [-1, 1]) sph(0.018 * s, M.dark, d.cx + sx * 0.04 * s, d.yWaist + 0.22 * s, front - 0.22 * s, parent);
+    }
+  }
+}
+// a balloon on a string, tied to the body (it floats above them wherever they go)
+function buildBalloon(core, col) {
+  const b = sph(0.25, mat(col, { roughness: .25 }), 0.45, 1.75, 0, core, [1, 1.2, 1]);
+  cyl(0.004, 0.004, 1.5, M.white, 0.45, 0.8, 0, core);
+  const knot = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.06, 8), b.material); knot.position.set(0.45, 1.46, 0); knot.rotation.x = Math.PI; core.add(knot);
+}
 // put the limbs (and the googly eyes) where the current pose wants them
 function animatePax(p) {
   const r = p.rig, t = S.t + p.phase;
@@ -444,25 +501,25 @@ function ejectPassenger(p, msg) {
   netEvent('eject', passengers.indexOf(p));
   if (p.seat) { p.seat.occupant = null; p.seat = null; }
   overboard(p);
-  // upright under a proper canopy, arms up holding the lines
+  // first they plummet, tumbling and flailing; the parachute (hidden for now) pops open a moment later
   p.g.rotation.set(0, p.g.rotation.y, 0);
-  p.rig.core.rotation.set(0, 0, 0);
-  p.pose = 'chute'; animatePax(p);
+  p.pose = 'flail'; animatePax(p);
+  const chute = new THREE.Group(); chute.visible = false; p.g.add(chute);
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42),
     std(pick([0xff4040, 0xffb020, 0x30a0ff, 0x40d070]), { side: THREE.DoubleSide, roughness: .8 }));
-  canopy.scale.y = 0.6; canopy.position.y = 3.3; p.g.add(canopy);
+  canopy.scale.y = 0.6; canopy.position.y = 3.3; chute.add(canopy);
   const rimY = 3.3 + 0.6 * 1.3 * Math.cos(Math.PI * 0.42), rimR = 1.3 * Math.sin(Math.PI * 0.42) * 0.95;
   for (let i = 0; i < 6; i++) {
     const a = i / 6 * Math.PI * 2, from = new THREE.Vector3(Math.sign(Math.cos(a)) * 0.2, 2.1, 0), to = new THREE.Vector3(Math.cos(a) * rimR, rimY, Math.sin(a) * rimR);
     const dir = to.clone().sub(from), line = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, dir.length(), 4), M.dark);
     line.position.copy(from).addScaledVector(dir, 0.5);
     line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-    p.g.add(line);
+    chute.add(line);
   }
   p.sprite.visible = false;
-  shout(p, pick(YELLS.chute), 99);
-  toDebris(p.g, new THREE.Vector3(rand(-3, 3), -3, 22), 10);
-  falling[falling.length - 1].chute = true;
+  shout(p, pick(['AAAAAAAAAAH!', 'NOT LIKE THIS!', 'WHERE\'S THE CORD?!', 'MOMMYYYY!', 'I REGRET EVERYTHING!']), 99);
+  toDebris(p.g, new THREE.Vector3(rand(-3, 3), -2, 22), 11);
+  Object.assign(falling[falling.length - 1], { chute: 'free', p, chuteG: chute, openAt: rand(1.6, 2.4), spinP: { x: rand(4, 8), z: rand(-6, 6) } });
   S.ejected++; S.needs.calm -= 25;
   say(msg || `🪂 ${p.name} left the plane. Their parachute opened. They will be writing a strongly-worded letter.`, 'bad');
 }

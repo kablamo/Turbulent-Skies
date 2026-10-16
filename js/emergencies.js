@@ -154,6 +154,9 @@ const SERVICES = {
     fn: () => { S.needs.hunger += 45; say('Chicken or pasta? 🍗🍝'); } },
   movie: { icon: '🎬', name: 'In-flight movie', where: 'Screen at the front of the cabin', cd: 16, label: () => 'Start a movie',
     fn: () => { S.needs.bored += 45; movieT = 45; say(pick(['Now showing: "A Dog\'s Day Out" 🐕', 'Now showing: "Airplane!" ✈', 'Now showing: "Up" 🎈'])); } },
+  bbq: { icon: '🍔', name: 'Wing BBQ', where: 'Left wing · barbecue', cd: 20, hold: 3, label: () => 'Grill burgers on the wing',
+    check: () => S.seatbelt ? 'Nobody can come out to the wing for burgers while the seatbelt sign is on!' : null,
+    fn: () => { S.needs.hunger += 50; S.needs.calm += 10; say(pick(['🍔 Burgers on the wing! The passengers can\'t believe it.', '🌭 Hot dogs at 3,000 metres. Five stars.', '🍔 "Is this… legal?" "Who cares, pass the ketchup!"', '🍔 The smell of barbecue drifts through the cabin. Everyone is calmer.'])); } },
   belt: { icon: '💺', name: 'Seatbelt sign', where: 'Cockpit · left console', cd: 1, label: () => `Turn seatbelt sign ${S.seatbelt ? 'OFF' : 'ON'}`,
     fn: () => { S.seatbelt = !S.seatbelt; beep(S.seatbelt ? 1200 : 900, .15, 'sine', .07); say(S.seatbelt ? '💺 Seatbelt sign ON' : 'Seatbelt sign off'); } },
 };

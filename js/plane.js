@@ -307,10 +307,10 @@ function lavRoom(side) {
     nav.position.set(s * (WING_OUT + 0.1), 0.05, le(WING_OUT) + 0.3); panel.add(nav);
     const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     strobe.position.set(s * (WING_OUT + 0.1), 0.05, te(WING_OUT) - 0.2); panel.add(strobe); navLights.push({ m: strobe, blink: 1.0 });
-    const patch = box(0.6, 0.3, 3.8, M.grey, s * WING_IN, 0, (le(WING_IN) + te(WING_IN)) / 2);
+    const patch = box(0.6, 0.3, te(WING_IN) - le(WING_IN) - 0.2, M.grey, s * WING_IN, 0, (le(WING_IN) + te(WING_IN)) / 2);
     patch.visible = false;
     wings[side] = { panel, patch, attached: true };
-    station('tip' + side, Side + ' wing tip', Side + ' wing', box(1.2, 1.0, 3.8, M.hit, s * (WING_IN - 0.4), 0.4, (le(WING_IN) + te(WING_IN)) / 2));
+    station('tip' + side, Side + ' wing tip', Side + ' wing', box(1.2, 1.0, te(WING_IN) - le(WING_IN) - 0.2, M.hit, s * (WING_IN - 0.4), 0.4, (le(WING_IN) + te(WING_IN)) / 2));
     cyl(0.22, 0.22, 0.1, M.yellow, s * FUEL_X, 0.05, 3);
     station('fuel' + side, Side + ' fuel line', Side + ' wing', box(0.9, 0.6, 0.9, M.hit, s * FUEL_X, 0.25, 3));
 
@@ -335,6 +335,34 @@ function lavRoom(side) {
     engines[side] = { group: eng, prop, disc, spin: 10, state: 'ok', acc: 0, leak: false };
     station('eng' + side, Side + ' engine', Side + ' wing', nac);
   }
+
+  // ---- a barbecue on the left wing (the airline calls it "premium outdoor dining")
+  const g = new THREE.Group(); g.position.set(-BBQ_X, 0, (le(BBQ_X) + te(BBQ_X)) / 2 - 0.6); plane.add(g);
+  const red = std(0xc0262e, { roughness: .35, metalness: .3, side: THREE.DoubleSide }), steel = std(0x9aa3ad, { metalness: .7, roughness: .3 });
+  // kettle grill: a bowl, an open lid, three legs and a grate
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), red); bowl.position.y = 0.95; g.add(bowl);
+  const lidHinge = new THREE.Group(); lidHinge.position.set(0, 0.95, 0.45); lidHinge.rotation.x = -1.2; g.add(lidHinge);
+  const lid = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), red); lid.position.z = -0.45; lidHinge.add(lid);
+  cyl(0.04, 0.04, 0.1, M.dark, 0, 0.47, -0.45, lidHinge);
+  for (let i = 0; i < 3; i++) { const a = i * Math.PI * 2 / 3; const l = cyl(0.025, 0.025, 0.95, steel, Math.sin(a) * 0.3, 0.45, Math.cos(a) * 0.3, g); l.rotation.set(Math.cos(a) * 0.25, 0, -Math.sin(a) * 0.25); }
+  const coals = cyl(0.36, 0.36, 0.04, new THREE.MeshBasicMaterial({ color: 0xff5a1a }), 0, 0.82, 0, g);
+  cyl(0.42, 0.42, 0.015, M.dark, 0, 0.95, 0, g);
+  const food = [];
+  const brown = std(0x5a3418), sausage = std(0xb0502a);
+  for (const [fx, fz] of [[-0.18, -0.12], [0.16, -0.15], [0.02, 0.17]]) food.push(cyl(0.11, 0.11, 0.05, brown, fx, 0.985, fz, g));
+  for (const fz of [-0.02, 0.06]) { const sg = cyl(0.035, 0.035, 0.3, sausage, 0.05, 0.985, fz, g); sg.rotation.z = Math.PI / 2; food.push(sg); }
+  // a little table with sauces and plates, a cooler, and a patio umbrella
+  box(0.9, 0.05, 0.55, std(0xd9a066), 1.05, 0.78, 0, g);
+  for (const [lx, lz] of [[0.65, -0.22], [1.45, -0.22], [0.65, 0.22], [1.45, 0.22]]) box(0.04, 0.78, 0.04, M.dark, lx, 0.39, lz, g);
+  cyl(0.04, 0.045, 0.2, M.red, 0.85, 0.9, -0.1, g); cyl(0.04, 0.045, 0.2, M.yellow, 0.95, 0.9, -0.1, g);
+  for (let i = 0; i < 4; i++) cyl(0.13, 0.11, 0.012, M.white, 1.25, 0.81 + i * 0.013, 0.05, g);
+  box(0.6, 0.4, 0.4, std(0x2a7fd4), -1.0, 0.2, 0.3, g); box(0.62, 0.06, 0.42, M.white, -1.0, 0.43, 0.3, g);
+  cyl(0.03, 0.03, 2.4, M.dark, 1.05, 1.2, 0.55, g);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(1.3, 0.45, 12, 1, true), std(0xffd34a, { side: THREE.DoubleSide })); shade.position.set(1.05, 2.3, 0.55); g.add(shade);
+  textPlane(0.9, 0.22, 'WING BBQ', '#c0262e', '#fff', g, -1.0, 0.22, 0.09, Math.PI, 'bold 80px sans-serif');
+  const hit = box(1.2, 1.4, 1.2, M.hit, 0, 0.7, 0, g);
+  station('bbq', 'Barbecue', 'Left wing', hit, { service: 'bbq' });
+  window.bbq = { g, food, coals, lid: lidHinge, x: -BBQ_X, z: g.position.z };
 })();
 
 // ---------------------------------------------------------------- damage

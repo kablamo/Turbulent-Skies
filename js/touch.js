@@ -75,11 +75,12 @@ addEventListener('gesturestart', e => e.preventDefault());   // no pinch-zooming
 addEventListener('touchstart', () => {
   if (AC && AC.state === 'suspended') AC.resume();
   if (!TOUCH) { TOUCH = true; document.documentElement.classList.add('touch'); unlock(); }
+  if (CUT.on && S.running) skipCutscene();
 }, { passive: true });
 
 // only show the buttons you can use right now
 setInterval(() => {
-  const on = TOUCH && S.running && !S.over && !S.paused;
+  const on = TOUCH && S.running && !S.over && !S.paused && !CUT.on;
   touchUI.style.display = on ? 'block' : 'none';
   if (!on) return;
   const walking = !S.driving && !S.flying;

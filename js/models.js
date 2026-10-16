@@ -62,6 +62,19 @@ function prepareModel(scene) {
   // every bone's rest position, so things like a pilot's hat can be pinned onto them
   MODEL.restMat = {};
   scene.traverse(o => { if (o.isBone) MODEL.restMat[o.name] = o.matrixWorld.clone(); });
+  // the torso: between the hips and the neck, inside the shoulders (for backpacks and other accessories)
+  const shoulder = joints.arm[1] && scene.getObjectByName(joints.arm[1].name);
+  const shX = shoulder ? Math.abs(new THREE.Vector3().setFromMatrixPosition(shoulder.matrixWorld).x) + 0.1 : 0.35;
+  const torso = new THREE.Box3(), tv = new THREE.Vector3();
+  const neckY0 = joints.neck[0] ? new THREE.Vector3().setFromMatrixPosition(scene.getObjectByName(joints.neck[0].name).matrixWorld).y : box.max.y * 0.65;
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) { tv.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); if (tv.y > hip.y && tv.y < neckY0 && Math.abs(tv.x) < shX) torso.expandByPoint(tv); }
+  });
+  const T = torso.isEmpty() ? new THREE.Box3(new THREE.Vector3(-0.3, hip.y, hip.z - 0.3), new THREE.Vector3(0.3, neckY0, hip.z + 0.3)) : torso;
+  MODEL.body = { cx: 0, cz: (T.min.z + T.max.z) / 2, r: (T.max.x - T.min.x) / 2, rz: (T.max.z - T.min.z) / 2,
+    yMid: T.min.y + (T.max.y - T.min.y) * 0.55, yWaist: T.min.y + (T.max.y - T.min.y) * 0.2, yNeck: neckY0, neckR: 0.14, s: 1.15 };
   // the head: everything above the neck joint
   const neck = joints.neck[0] && scene.getObjectByName(joints.neck[0].name), neckY = neck ? new THREE.Vector3().setFromMatrixPosition(neck.matrixWorld).y : box.max.y - 0.5;
   MODEL.head = new THREE.Box3();
@@ -93,6 +106,13 @@ function applyModel(p) {
   p.rig.core.add(m);
   p.model = { root: m, bones };
   if (p.pilot) pilotOutfit(p);
+  // backpacks and friends ride on the body bone (the balloon is tied to the body already)
+  const bodyBone = MODEL.joints.neck[0] && m.getObjectByName(MODEL.proto.getObjectByName(MODEL.joints.neck[0].name).parent.name);
+  if (bodyBone && p.acc && p.acc.length) {
+    const accRoot = new THREE.Group();
+    pinToBone(bodyBone, accRoot, 0, 0, 0);
+    buildAccessories(accRoot, p.acc.filter(a => a !== 'balloon'), MODEL.body, p.accCol);
+  }
   poseModel(p);
 }
 // pin something onto a bone, given where it should sit on the model in its rest pose

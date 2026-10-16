@@ -132,6 +132,7 @@ function updatePassengerNeeds(dt, dead, openings) {
 }
 
 function updateEffects(dt, flight) {
+  for (const f of termAnim) f(S.t);
   for (const s of ['L', 'R']) {
     const e = engines[s], sx = s === 'L' ? -ENG_X : ENG_X;
     e.acc += dt;
@@ -145,6 +146,12 @@ function updateEffects(dt, flight) {
       if (e.leak && Math.random() < .5) emitLocal(smokeFx, s === 'L' ? -FUEL_X : FUEL_X, 0.15, 3, rand(-.3, .3), rand(.5, 1.5), 9, 0xeef4ff, .3, 1, 3, .6);
     }
   }
+  // the barbecue smokes away, a lot more when someone's grilling
+  const grilling = S.holdKey === 'svcbbq';
+  bbq.coals.material.color.setHSL(0.05, 1, 0.45 + Math.sin(S.t * 6) * 0.08 + (grilling ? 0.12 : 0));
+  bbq.food.forEach((f, i) => { f.position.y = 0.985 + (grilling ? Math.max(0, Math.sin(S.t * 9 + i * 1.7)) * 0.12 : 0); });
+  if (Math.random() < dt * (grilling ? 40 : 6))
+    emitLocal(smokeFx, bbq.x + rand(-.2, .2), 1.1, bbq.z + rand(-.2, .2), rand(-.3, .3), rand(.8, 1.6), flight ? 12 : 0.4, grilling ? 0x999999 : 0xbbbbbb, .35, 1.6, 3, .45);
   if (flight && ramp.open > 0.3 && Math.random() < dt * 25)
     emitLocal(smokeFx, rand(-.6, .6), rand(.6, 2.2), rand(-6, 10), 0, 0, 6, 0xffffff, .3, 1.5, 3, .3);
   if (hole.seg && Math.random() < dt * 30) {
@@ -169,9 +176,21 @@ function updateEffects(dt, flight) {
   for (let i = falling.length - 1; i >= 0; i--) {
     const fp = falling[i];
     fp.t += dt;
-    if (fp.chute) {
+    if (fp.chute === 'free') {
+      // free fall: tumbling head over heels, arms and legs going everywhere
+      fp.vel.y -= 22 * dt;
+      const core = fp.p.rig.core;
+      core.rotation.x += fp.spinP.x * dt; core.rotation.z += fp.spinP.z * dt;
+      animatePax(fp.p);
+      if (fp.t > fp.openAt) {
+        // FWUMP: the parachute opens and yanks them upright
+        fp.chute = true; fp.chuteG.visible = true; fp.vel.y = -3;
+        core.rotation.set(0, 0, 0); fp.p.pose = 'chute'; animatePax(fp.p);
+        shout(fp.p, pick(YELLS.chute), 99);
+      }
+    } else if (fp.chute) {
       // sway gently under the canopy (relative to how they left the plane, so they never flip upside down)
-      fp.vel.y = Math.max(fp.vel.y - 10 * dt, -4);
+      fp.vel.y = Math.max(fp.vel.y - 10 * dt, -7);
       if (!fp.baseQ) fp.baseQ = fp.m.quaternion.clone();
       fp.m.quaternion.copy(fp.baseQ); fp.m.rotateZ(Math.sin(fp.t * 2) * 0.2);
     }
@@ -450,11 +469,10 @@ function showGameOver(html) {
 
 function startGame() {
   $('overlay').style.display = 'none';
-  $('hud').style.display = '';
   initAudio();
   S.running = true;
   lock(); goFullscreen();
-  sayLocal('Welcome to Gate 404! Your passengers are waiting in here, and their bags are coming out on the conveyor.', 'good');
+  startCutscene();   // shows the HUD and the welcome message when it ends
 }
 
 // debug hook for testing from the console, e.g. __debug.spawnFault('hull') or __debug.boardAll()
@@ -466,14 +484,14 @@ function boardAll() {
   items.forEach((it, i) => { if (it.state !== 'gone') { freeSlot(it); it.g.visible = true; it.state = 'free'; it.x = -2.4 + (i % 4) * 0.9; it.z = 7.4 + Math.floor(i / 4) * 1.1; it.y = 0; it.vx = it.vz = it.vy = 0; } });
   ramp.target = 0;
 }
-window.__debug = { NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, truck, bus };
+window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, truck, bus };
 
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   // in multiplayer the world keeps going while your menu is open
-  if (S.running && (!S.paused || NET.mode !== 'solo')) update(dt);
+  if (S.running && (!S.paused || NET.mode !== 'solo')) { update(dt); if (CUT.on) updateCutscene(dt); }
   else if (!S.running && !S.over) {
     // title screen: look out of the terminal at the plane
     camera.position.set(P.x, P.y + EYE, P.z);

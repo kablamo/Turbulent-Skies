@@ -100,3 +100,16 @@ html.touch #prompt { top: calc(50% + 30px); white-space: normal; text-align: cen
 }
 #overlay .box.wide { max-width: 940px; }
 @media (min-width: 820px) { .box.wide .helpCols { grid-template-columns: 1fr 1fr; } }
+
+/* ---------------------------------------------------------------- intro cutscene */
+#cut { display: none; position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+#cut .bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
+#cut .bar.top { top: 0; } #cut .bar.bot { bottom: 0; }
+#cutCap { position: absolute; left: 50%; bottom: calc(11vh + 22px); transform: translateX(-50%); width: min(90vw, 900px); text-align: center; font-size: clamp(18px, 2.6vw, 30px); font-weight: 700; text-shadow: 0 2px 6px #000, 0 0 18px #000; opacity: 0; }
+#cutCap.in { animation: capIn 3.4s forwards; }
+@keyframes capIn { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+#cutTitle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; opacity: 0; transition: opacity .6s; text-shadow: 0 3px 10px #000, 0 0 30px #000; }
+#cutTitle .big { font-size: clamp(36px, 7vw, 84px); font-weight: 900; letter-spacing: .06em; color: #ffd34a; }
+#cutTitle .ep { font-size: clamp(18px, 2.6vw, 30px); font-weight: 700; margin-top: 8px; }
+#cutTitle .who { font-size: clamp(14px, 1.8vw, 20px); opacity: .85; margin-top: 6px; }
+#cutSkip { position: absolute; right: 18px; bottom: calc(11vh - 30px); font-size: 13px; opacity: .7; color: #fff; }

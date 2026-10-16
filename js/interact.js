@@ -240,6 +240,7 @@ const handItems = {};
 // ---------------------------------------------------------------- input
 // keyDown/keyUp are shared by the keyboard and the touch buttons
 function keyDown(k, repeat) {
+  if (CUT.on) { if (!repeat && [' ', 'enter', 'escape', 'e'].includes(k)) skipCutscene(); return; }   // the intro cutscene
   keys[k] = true;
   if (repeat) return;
   if (k === 'enter' && S.running && !S.over && S.paused) resume();
@@ -266,6 +267,7 @@ const locked = () => document.pointerLockElement === canvas;
 const lock = () => { if (TOUCH) return; try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
 canvas.addEventListener('mousedown', e => {
   if (!S.running || S.over || TOUCH) return;
+  if (CUT.on) { skipCutscene(); if (!locked()) lock(); return; }
   if (!locked()) { lock(); return; }
   if (e.button === 0) { mouseDown = true; S.press = true; }
 });
