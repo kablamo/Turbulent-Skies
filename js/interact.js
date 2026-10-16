@@ -213,9 +213,10 @@ const handItems = {};
 // ---------------------------------------------------------------- input
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
   keys[k] = true;
   if (e.repeat) return;
+  if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else { showPause(); document.exitPointerLock(); } }
   if (k === 'e') S.press = true;
   if (k === 'q') S.drop = true;
   if (k === 'f') S.act = true;
@@ -223,7 +224,8 @@ addEventListener('keydown', e => {
   if (k === ' ') S.jump = true;
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
+// switching to another window pauses; just losing the mouse (Esc, a stray click) doesn't
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; if (S.running && !S.over) showPause(); });
 const locked = () => document.pointerLockElement === canvas;
 const lock = () => { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
 canvas.addEventListener('mousedown', e => {
@@ -237,12 +239,20 @@ addEventListener('mousemove', e => {
   P.yaw -= e.movementX * 0.0022;
   P.pitch = clamp(P.pitch - e.movementY * 0.0022, -1.45, 1.45);
 });
+const lockHint = document.createElement('div');
+lockHint.id = 'lockHint'; lockHint.textContent = '🖱 Click to look around · P to pause';
+document.body.appendChild(lockHint);
+function showPause() {
+  if (S.paused) return;
+  S.paused = true;
+  if (locked()) document.exitPointerLock();
+  $('ovBox').innerHTML = '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button>';
+  $('resumeBtn').onclick = resume;
+  $('overlay').style.display = 'flex';
+}
+function resume() { S.paused = false; $('overlay').style.display = 'none'; lock(); }
 document.addEventListener('pointerlockchange', () => {
   if (locked()) { S.paused = false; $('overlay').style.display = 'none'; }
-  else if (S.running && !S.over) {
-    S.paused = true;
-    $('ovBox').innerHTML = '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button>';
-    $('resumeBtn').onclick = lock;
-    $('overlay').style.display = 'flex';
-  }
+  else if (S.running && !S.over && !document.hasFocus()) showPause();
 });
+setInterval(() => { lockHint.style.display = S.running && !S.over && !S.paused && !locked() ? 'block' : 'none'; }, 200);

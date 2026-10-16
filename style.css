@@ -61,4 +61,5 @@ canvas { display: block; }
 #overlay .big.alt:hover { background: #4b6085; }
 #overlay .big:disabled { opacity: .5; cursor: default; }
 #lobbyMsg { color: #ff8a8a; font-size: 13px; margin-top: 6px; min-height: 16px; }
+#lockHint { position: fixed; left: 50%; top: calc(50% - 60px); transform: translateX(-50%); display: none; pointer-events: none; background: rgba(12,20,32,.8); padding: 8px 16px; border-radius: 10px; font-size: 15px; font-weight: 700; z-index: 5; }
 #netPanel { bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; text-align: center; padding: 6px 12px; }
