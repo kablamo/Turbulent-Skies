@@ -211,26 +211,34 @@ const handItems = {};
 })();
 
 // ---------------------------------------------------------------- input
-addEventListener('keydown', e => {
-  const k = e.key.toLowerCase();
-  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
+// keyDown/keyUp are shared by the keyboard and the touch buttons
+function keyDown(k, repeat) {
   keys[k] = true;
-  if (e.repeat) return;
+  if (repeat) return;
   if (k === 'enter' && S.running && !S.over && S.paused) resume();
-  if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else { showPause(); document.exitPointerLock(); } }
+  if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else showPause(); }
+  if ((k === 'h' || k === '?') && S.running && !S.over) { if (S.helpOpen) resume(); else showPause(true); }
+  if (k === 'escape' && S.helpOpen) resume();
   if (k === 'e') S.press = true;
   if (k === 'q') S.drop = true;
   if (k === 'f') S.act = true;
   if (k === 'c' && (S.driving || S.flying)) S.chase = !S.chase;
   if (k === ' ') S.jump = true;
+}
+function keyUp(k) { keys[k] = false; }
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;   // typing your name or a room code
+  const k = e.key.toLowerCase();
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
+  keyDown(k, e.repeat);
 });
-addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('keyup', e => keyUp(e.key.toLowerCase()));
 // switching to another window pauses; just losing the mouse (Esc, a stray click) doesn't
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; if (S.running && !S.over) showPause(); });
 const locked = () => document.pointerLockElement === canvas;
-const lock = () => { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
+const lock = () => { if (TOUCH) return; try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
 canvas.addEventListener('mousedown', e => {
-  if (!S.running || S.over) return;
+  if (!S.running || S.over || TOUCH) return;
   if (!locked()) { lock(); return; }
   if (e.button === 0) { mouseDown = true; S.press = true; }
 });
@@ -241,19 +249,65 @@ addEventListener('mousemove', e => {
   P.pitch = clamp(P.pitch - e.movementY * 0.0022, -1.45, 1.45);
 });
 const lockHint = document.createElement('div');
-lockHint.id = 'lockHint'; lockHint.textContent = '🖱 Click to look around · P to pause';
+lockHint.id = 'lockHint'; lockHint.textContent = '🖱 Click (or use the arrow keys) to look around · H for help';
 document.body.appendChild(lockHint);
-function showPause() {
-  if (S.paused) return;
-  S.paused = true;
-  if (locked()) document.exitPointerLock();
-  $('ovBox').innerHTML = '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button><p style="opacity:.7;font-size:13px">or press Enter / P</p>';
+
+const k_ = (...ks) => ks.map(k => `<kbd>${k}</kbd>`).join('');
+function helpHTML() {
+  const keyboard = `<div>
+    <h3>⌨ Keyboard &amp; mouse</h3>
+    <table class="keys">
+      <tr><th colspan="2">On foot</th></tr>
+      <tr><td>${k_('W', 'A', 'S', 'D')}</td><td>Walk</td></tr>
+      <tr><td>Mouse or ${k_('←', '↑', '↓', '→')}</td><td>Look around</td></tr>
+      <tr><td>${k_('Shift')}</td><td>Run</td></tr>
+      <tr><td>${k_('Space')}</td><td>Jump</td></tr>
+      <tr><td>${k_('E')} or click</td><td>Use, pick up, throw what you're carrying</td></tr>
+      <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
+      <tr><td>${k_('Q')}</td><td>Put down what you're carrying</td></tr>
+      <tr><th colspan="2">Driving the bus or truck</th></tr>
+      <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Gas and reverse</td></tr>
+      <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer</td></tr>
+      <tr><td>${k_('F')}</td><td>Board or unload passengers (bus)</td></tr>
+      <tr><td>${k_('Q')}</td><td>Open or close the bus door</td></tr>
+      <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
+      <tr><td>${k_('E')}</td><td>Get up</td></tr>
+      <tr><th colspan="2">Flying (captain's seat)</th></tr>
+      <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer (and line up with the runway)</td></tr>
+      <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Climb and dive (hold W to take off)</td></tr>
+      <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
+      <tr><td>${k_('E')}</td><td>Get up (the autopilot takes over)</td></tr>
+      <tr><th colspan="2">Game</th></tr>
+      <tr><td>${k_('P')}</td><td>Pause</td></tr>
+      <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
+      <tr><td>${k_('H')}</td><td>This help screen</td></tr>
+    </table></div>`;
+  const touch = `<div>
+    <h3>👆 Touch screen</h3>
+    <table class="keys">
+      <tr><td>Left stick</td><td>Walk, drive and fly (push all the way to run)</td></tr>
+      <tr><td>Drag on the right side</td><td>Look around</td></tr>
+      <tr><td>${k_('E')} button</td><td>Use, pick up, throw (hold or tap fast for repairs)</td></tr>
+      <tr><td>${k_('Q')} ${k_('F')} ${k_('C')} ${k_('⤒')}</td><td>Put down / bus door, vehicle job, camera, jump (they appear when you can use them)</td></tr>
+      <tr><td>${k_('II')} ${k_('?')}</td><td>Pause, this help screen</td></tr>
+    </table></div>`;
+  return `<h1>🎮 Controls</h1><div class="helpCols">${TOUCH ? touch + keyboard : keyboard + touch}</div>`;
+}
+function showPause(help) {
+  if (S.paused && !help) return;
+  S.paused = true; S.helpOpen = !!help;
+  unlock();
+  $('ovBox').classList.toggle('wide', !!help);
+  $('ovBox').innerHTML = help
+    ? helpHTML() + '<button class="big" id="resumeBtn">Back to the game</button>'
+    : '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button> <button class="big alt" id="helpBtn">🎮 Controls</button><p style="opacity:.7;font-size:13px">or press Enter / P</p>';
   $('resumeBtn').onclick = resume;
+  if ($('helpBtn')) $('helpBtn').onclick = () => showPause(true);
   $('overlay').style.display = 'flex';
 }
-function resume() { S.paused = false; $('overlay').style.display = 'none'; lock(); }
+function resume() { S.paused = false; S.helpOpen = false; $('ovBox').classList.remove('wide'); $('overlay').style.display = 'none'; lock(); }
 document.addEventListener('pointerlockchange', () => {
-  if (locked()) { S.paused = false; $('overlay').style.display = 'none'; }
+  if (locked()) { S.paused = false; S.helpOpen = false; $('overlay').style.display = 'none'; }
   else if (S.running && !S.over && !document.hasFocus()) showPause();
 });
-setInterval(() => { lockHint.style.display = S.running && !S.over && !S.paused && !locked() ? 'block' : 'none'; }, 200);
+setInterval(() => { lockHint.style.display = !TOUCH && S.running && !S.over && !S.paused && !locked() ? 'block' : 'none'; }, 200);

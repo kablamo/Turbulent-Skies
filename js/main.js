@@ -419,7 +419,7 @@ function gameOver(won, reason) {
   S.over = true; S.running = false;
   if (droneGain) droneGain.gain.value = 0;
   if (windGain) windGain.gain.value = 0;
-  document.exitPointerLock();
+  unlock();
   const hap = Math.round(happiness()), integ = Math.max(0, Math.round(S.integrity));
   const stats = `Emergencies fixed: <b>${S.fixed}</b> · Times you fell off: <b>${S.falls}</b><br>Passengers who left by parachute: <b>${S.ejected}</b> · Bags lost: <b>${S.lostBags}</b>`;
   let html;
@@ -443,7 +443,7 @@ function gameOver(won, reason) {
 }
 function showGameOver(html) {
   S.over = true; S.running = false;
-  document.exitPointerLock();
+  unlock();
   $('ovBox').innerHTML = html + `<button class="big" onclick="location.href = location.pathname">Fly again</button>`;
   $('overlay').style.display = 'flex';
 }
@@ -453,7 +453,7 @@ function startGame() {
   $('hud').style.display = '';
   initAudio();
   S.running = true;
-  lock();
+  lock(); goFullscreen();
   sayLocal('Welcome to Gate 404! Your passengers are waiting in here, and their bags are coming out on the conveyor.', 'good');
 }
 

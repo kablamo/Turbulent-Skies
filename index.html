@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Turbulent Skies</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -38,12 +41,14 @@
   <div id="netPanel" class="panel" style="display:none"></div>
 </div>
 
+<div id="rotate">🔄 Turn your iPad sideways to play</div>
 <div id="overlay">
   <div class="box" id="ovBox">
     <h1>✈ Turbulent Skies</h1>
     <p>You're the only crew member on Flight 404. Get your passengers and their luggage from the terminal onto the plane, take off, and keep this rattling propeller plane in one piece until you land.</p>
     <ul>
-      <li><b>Move:</b> WASD · <b>Look:</b> mouse · <b>Sprint:</b> Shift · <b>Jump:</b> Space · <b>Pause:</b> P (Enter or P to resume)</li>
+      <li><b>Move:</b> WASD · <b>Look:</b> mouse or arrow keys · <b>Sprint:</b> Shift · <b>Jump:</b> Space · <b>Pause:</b> P · <b>All controls:</b> H</li>
+      <li class="touchOnly"><b>On a touch screen:</b> use the stick at bottom-left to move, drag anywhere to look, and tap the buttons at bottom-right. Tap <b>?</b> for all controls.</li>
       <li><b>Interact / pick up:</b> look at something and press <b>E</b> (or click). While carrying, <b>E</b> throws and <b>Q</b> puts it down.</li>
       <li><b>Vehicles:</b> press <b>E</b> on the shuttle bus or the baggage truck to drive it. <b>W/S</b> drive, <b>A/D</b> steer, <b>F</b> does the vehicle's job, and <b>E</b> gets out.</li>
       <li><b>Passengers</b> wait in the terminal. Park the bus by the terminal doors and press F to board them, then park by the plane's cargo ramp and press F to let them off.</li>
@@ -79,6 +84,7 @@
 <script src="js/interact.js"></script>
 <script src="js/landing.js"></script>
 <script src="js/main.js"></script>
+<script src="js/touch.js"></script>
 <script src="js/net.js"></script>
 </body>
 </html>

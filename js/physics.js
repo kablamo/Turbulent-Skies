@@ -153,8 +153,11 @@ function updatePlayer(dt) {
   }
   if (S.flying) { P.x = -0.75; P.z = -10.6; P.y = 0; return; }
   if (S.driving) { const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z); P.x = e.x; P.z = e.z; P.y = v.floor; return; }
-  const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0);
-  const r = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0);
+  // on foot the arrow keys look around, so you can play without a mouse (in vehicles they steer)
+  P.yaw += ((keys.arrowleft ? 1 : 0) - (keys.arrowright ? 1 : 0)) * 2.2 * dt;
+  P.pitch = clamp(P.pitch + ((keys.arrowup ? 1 : 0) - (keys.arrowdown ? 1 : 0)) * 1.6 * dt, -1.45, 1.45);
+  const f = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+  const r = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
   const sp = (keys.shift ? 6.0 : 3.4) * (S.held ? 0.85 : 1);
   let mx = -Math.sin(P.yaw) * f + Math.cos(P.yaw) * r;
   let mz = -Math.cos(P.yaw) * f - Math.sin(P.yaw) * r;

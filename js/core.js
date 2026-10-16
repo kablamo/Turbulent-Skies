@@ -49,9 +49,14 @@ const BELT_X = 12, BELT_START = 92, BELT_END = 73.4, BELT_Y = GROUND + 0.75;
 const sideName = s => s === 'L' ? 'LEFT' : 'RIGHT';
 const sideWord = s => s === 'L' ? 'left' : 'right';
 
+// touch screens (iPads, phones) get on-screen controls instead of the mouse
+let TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 1 && /Macintosh|iPad|iPhone/.test(navigator.userAgent));
+if (TOUCH) document.documentElement.classList.add('touch');
+const unlock = () => { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} };
+
 // ---------------------------------------------------------------- renderer / scene
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, TOUCH ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 const canvas = renderer.domElement;

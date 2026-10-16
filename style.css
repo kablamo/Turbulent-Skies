@@ -63,3 +63,40 @@ canvas { display: block; }
 #lobbyMsg { color: #ff8a8a; font-size: 13px; margin-top: 6px; min-height: 16px; }
 #lockHint { position: fixed; left: 50%; top: calc(50% - 60px); transform: translateX(-50%); display: none; pointer-events: none; background: rgba(12,20,32,.8); padding: 8px 16px; border-radius: 10px; font-size: 15px; font-weight: 700; z-index: 5; }
 #netPanel { bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; text-align: center; padding: 6px 12px; }
+
+/* ---------------------------------------------------------------- help screen */
+#overlay h3 { margin: 14px 0 4px; font-size: 16px; }
+.helpCols { display: grid; grid-template-columns: 1fr; gap: 0 24px; }
+table.keys { border-collapse: collapse; font-size: 13px; width: 100%; }
+table.keys th { text-align: left; padding: 8px 0 2px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9cc8ff; }
+table.keys td { padding: 3px 8px 3px 0; vertical-align: top; }
+table.keys td:first-child { white-space: nowrap; width: 1%; }
+#overlay kbd { display: inline-block; min-width: 22px; text-align: center; background: #fff; color: #111; border-radius: 4px; padding: 0 5px; margin: 0 2px; font-family: inherit; font-weight: 700; font-size: 12px; box-shadow: 0 2px 0 #889; }
+.touchOnly { display: none; }
+html.touch .touchOnly { display: list-item; }
+
+/* ---------------------------------------------------------------- touch controls */
+#touchUI { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 6; }
+#touchUI > * { pointer-events: auto; touch-action: none; }
+canvas { touch-action: none; -webkit-touch-callout: none; }
+html.touch #hud { pointer-events: none; }
+#stick { position: absolute; left: calc(28px + env(safe-area-inset-left)); bottom: calc(28px + env(safe-area-inset-bottom)); width: 150px; height: 150px; border-radius: 50%; background: rgba(12,20,32,.35); border: 2px solid rgba(255,255,255,.35); }
+#knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+#tbtns { position: absolute; right: calc(20px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; align-items: flex-end; gap: 12px; width: 230px; }
+.tb { width: 66px; height: 66px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(12,20,32,.55); color: #fff; font: 800 22px/1 "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.tb small { font-size: 10px; font-weight: 600; opacity: .8; margin-top: 2px; }
+.tb.main { width: 92px; height: 92px; font-size: 30px; background: rgba(45,140,255,.7); }
+.tb.on { background: rgba(255,255,255,.75); color: #111; }
+#tmenu { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(150px); display: flex; gap: 8px; }
+.tb.sm { width: 44px; height: 44px; font-size: 18px; }
+/* make room for the stick and buttons */
+html.touch #tasks { bottom: 200px; width: 300px; max-height: calc(100vh - 360px); }
+html.touch #svc { bottom: auto; top: 175px; width: 240px; transform: scale(.85); transform-origin: top right; }
+html.touch #hand { right: 12px; bottom: 250px; }
+html.touch #prompt { top: calc(50% + 30px); white-space: normal; text-align: center; width: min(90vw, 560px); }
+#rotate { display: none; }
+@media (orientation: portrait) {
+  html.touch #rotate { display: flex; position: fixed; inset: 0; z-index: 20; background: rgba(5,10,20,.92); align-items: center; justify-content: center; font-size: 22px; font-weight: 700; text-align: center; padding: 30px; }
+}
+#overlay .box.wide { max-width: 940px; }
+@media (min-width: 820px) { .box.wide .helpCols { grid-template-columns: 1fr 1fr; } }
