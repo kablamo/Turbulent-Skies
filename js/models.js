@@ -13,7 +13,7 @@ const JOINT_NAMES = {
   thigh: ['thigh', 'upperleg', 'leg'], shin: ['knee', 'shin', 'lowerleg', 'calf'], neck: ['neck', 'head'],
 };
 const MAT_SLOTS = { skin: 'skin', shirt: 'shirt', pants: 'pants', shoe: 'shoes', shoes: 'shoes', hair: 'hair' };
-const ARM_SPREAD = 0.3;   // the arms hang slightly out from the body so they don't sink into a round tummy
+const ARM_SPREAD = 0;   // extra outward angle for the arms, on top of the game's own small one
 
 function findBone(root, names, side) {
   const ends = side === undefined ? [''] : side ? ['r', 'right'] : ['l', 'left'];
@@ -47,8 +47,8 @@ function prepareModel(scene) {
       return { name: bone.name, rest, hang, parentRest: restQ(bone.parent) };
     });
   }
-  // the lower arm and leg line up with the upper one, so a bent rest pose comes out straight
-  for (const [up, low] of [['arm', 'fore'], ['thigh', 'shin']]) for (let i = 0; i < 2; i++) {
+  // the forearm lines up with the lowered upper arm (the shins already point down in the model's stance)
+  for (const [up, low] of [['arm', 'fore']]) for (let i = 0; i < 2; i++) {
     const U = joints[up][i], L = joints[low][i];
     if (!U || !L) continue;
     const udir = new THREE.Vector3(0, 1, 0).applyQuaternion(U.hang), ldir = new THREE.Vector3(0, 1, 0).applyQuaternion(L.rest);
