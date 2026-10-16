@@ -153,7 +153,7 @@ function hostOnData(r, m) {
       break;
     case 'me':
       if (!r.driving && S.pilotRP !== r && !r.carriedBy) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
-      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.keys = m.keys || {}; r.air = !!m.air;
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
       break;
     case 'act': {
       const ud = hostRef(m.ref); if (!ud) return;
@@ -175,7 +175,7 @@ function hostOnData(r, m) {
     case 'fell':
       if (r.held) throwHeld(1, r);
       if (r.carryP) releasePlayer(r, 1);
-      S.integrity -= 5; S.needs.calm -= 25; S.falls++;
+      S.integrity -= 3; S.needs.calm -= 15; S.falls++;
       say(`🪂 ${r.name} fell off the plane and climbed back in. The passengers saw everything.`, 'bad');
       break;
   }
@@ -201,7 +201,9 @@ function playerPose(who) {
   if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z + 0.0, yaw: v.h, seat: true, ...extra }; }
   if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
   const yaw = who.carriedBy ? who.carriedBy.pose.yaw : who.pose.yaw;
-  return { x: who.pose.x, y: who.pose.y, z: who.pose.z, yaw, seat: false, ...extra };
+  // sitting in a vehicle seat (your own y is lowered for the camera; report the floor)
+  if (who.isLocal && P.sitV) return { x: P.x, y: P.sitV.floor, z: P.z, yaw, seat: true, ...extra };
+  return { x: who.pose.x, y: who.pose.y, z: who.pose.z, yaw, seat: !!who.sit, ...extra };
 }
 const r2 = v => Math.round(v * 100) / 100;
 function buildSnap() {
@@ -260,6 +262,7 @@ function clientOnData(m) {
     applySnap(m);
     if (!gotFirstSnap) { gotFirstSnap = true; $('joinStatus').textContent = 'Ready!'; $('goBtn').disabled = false; }
   } else if (m.t === 'launch') { launchMe(m); if (NET.me) NET.me.cb = null; }
+  else if (m.t === 'tp' && P.sitV) { P.sitSeat.player = false; P.sitV = P.sitSeat = null; Object.assign(P, { x: m.x, y: m.y, z: m.z, yaw: m.yaw, vy: 0, falling: false }); }
   else if (m.t === 'tp') { Object.assign(P, { x: m.x, y: m.y, z: m.z, yaw: m.yaw, vy: 0, falling: false }); }
   else if (m.t === 'say') sayLocal(m.text);
 }
@@ -454,7 +457,7 @@ function netUpdate(dt) {
   if (NET.mode === 'client') {
     const k = {};
     for (const key of ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']) if (keys[key]) k[key] = true;
-    netSend({ t: 'me', x: r2(P.x), y: r2(P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), keys: k, air: !!P.launched });
+    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), keys: k, air: !!P.launched, seat: !!P.sitV });
   }
 }
 // the host keeps sending snapshots even before it clicks "Start playing"

@@ -30,7 +30,7 @@ function makeVehicle(kind, x, z) {
     const yel = M.yellow, glass = std(0x2a3a4a, { transparent: true, opacity: .35, roughness: .1, metalness: .5 });
     Object.assign(v, { name: 'baggage truck', w: 1.0, l: 2.4, max: 9,
       eye: { x: 0.3, y: VFLOOR + 1.2, z: -1.15 }, stand: { x: -0.3, z: -1.6 },
-      zones: [[-0.8, 0.8, -2.2, -0.9], [-1.15, -0.75, -2.1, -1.0]],
+      zones: [[-0.8, 0.8, -2.2, -0.9], [-1.15, -0.75, -2.1, -1.0], [-1.05, 1.05, -0.7, 2.5, 'bed']],   // jump up onto the bed to ride on the back
       solidTop: l => l.z > -0.75 ? BED_TOP : GROUND + 2.5 });
     box(2.0, 0.3, 4.8, M.dark, 0, GROUND + 0.25, 0, g);
     box(1.9, 0.05, 1.6, M.panel, 0, VFLOOR, -1.55, g);                    // cab floor
@@ -44,6 +44,8 @@ function makeVehicle(kind, x, z) {
     box(0.3, 0.06, 0.6, M.steel, -1.15, GROUND + 0.22, -1.55, g);         // step
     box(1.9, 0.3, 0.3, M.panel, 0, VFLOOR + 0.85, -2.15, g);                // dashboard
     driverSeat(g, 0.3, -1.15, M.dark);
+    driverSeat(g, -0.4, -1.15, M.seat);                                    // passenger seat
+    v.seats.push({ x: -0.4, z: -1.15, p: null });
     steeringWheel(v, g, 0.3, VFLOOR + 1.05, -1.75);
     box(0.3, 0.15, 0.3, std(0xff8800, { emissive: 0x663300 }), 0, GROUND + 2.58, -1.55, g);
     box(2.0, 0.1, 2.9, M.wood, 0, GROUND + 0.78, 0.85, g);                  // bed
@@ -100,6 +102,8 @@ function makeVehicle(kind, x, z) {
     box(0.04, 2.5, 0.04, M.steel, 0.42, VFLOOR + 1.25, -2.1, g);          // grab pole
     for (const [wx, wz] of [[-1.25, -2.8], [1.25, -2.8], [-1.25, 2.8], [1.25, 2.8]]) wheel(wx, wz, 0.45);
   }
+  // players can sit in any seat (E) and ride along while someone else drives
+  for (const s of v.seats) { const hit = box(0.55, 0.5, 0.45, M.hit, s.x, VFLOOR + 0.55, s.z, g); hit.userData.vehSeat = { v, s }; targets.push(hit); }
   vehicles.push(v);
   syncVehicle(v);
   return v;
@@ -167,6 +171,31 @@ function driveVehicle(v, dt, k = keys) {
 }
 function busDoor(v, out = 0.5) { return vehPoint(v, v.w + out, -3.1); }
 // F while driving: board or unload passengers (bus), or toss bags into the plane (truck)
+// sitting in a vehicle as a passenger (only on your own screen; others see you sit)
+function sitInVehicle(v, s) {
+  if (s.p || s.player) return;
+  P.sitV = v; P.sitSeat = s; s.player = true; P.yaw = v.h; P.pitch = -0.05;
+  beep(300, .1, 'sine', .05);
+}
+function standFromSeat() {
+  const v = P.sitV, s = P.sitSeat; if (!v) return;
+  s.player = false; P.sitV = P.sitSeat = null;
+  const pt = vehPoint(v, v.kind === 'bus' ? 0 : s.x, v.kind === 'bus' ? s.z : s.z - 0.45);
+  Object.assign(P, { x: pt.x, z: pt.z, y: v.floor, vy: 0 });
+}
+// anyone standing in (or sitting in, or on the back of) a vehicle moves with it
+function rideVehicles() {
+  if (S.phase !== 'airport') return;
+  for (const v of vehicles) {
+    const pv = v.prev;
+    v.prev = { x: v.x, z: v.z, h: v.h, w: v.w, l: v.l };
+    if (!pv || (pv.x === v.x && pv.z === v.z && pv.h === v.h) || S.driving === v) continue;
+    const riding = P.sitV === v || (!P.falling && P.y > GROUND + 0.2 && inVehicle(pv, P.x, P.z));
+    if (!riding) continue;
+    const l = vehLocal(pv, P.x, P.z), w = vehPoint(v, l.x, l.z);
+    P.x = w.x; P.z = w.z; P.yaw += v.h - pv.h;
+  }
+}
 function vehicleAction(v) {
   if (v.kind === 'truck') {
     // no automatic unloading: park near the cargo ramp, hop out, and carry the bags in yourself

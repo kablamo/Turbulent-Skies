@@ -237,7 +237,7 @@ const S = {
   toT: 0, toSpeed: 0, liftoff: false, alt: 0, pitch: 0,
   turb: 0, flash: 0, shake: 0, roll: 0, gust: 0, gustT: 0,
   needs: { calm: 90, hunger: 85, bored: 85, comfort: 85 },
-  faults: [], nextFault: 20, firstFault: true, nextStorm: 45, stormOn: false,
+  faults: [], nextFault: 28, firstFault: true, nextStorm: 45, stormOn: false,
   nextCall: 18, nextStroll: 15, cd: {}, press: false, drop: false, act: false, jump: false, holdKey: null, holdT: 0, holdLock: false, held: null,
   beltSpawnT: 0.5, beltLoadT: 0,
   alarmT: 0, complainT: 12, hudT: 0, lowHapT: 0, fixed: 0, falls: 0, ejected: 0, lostBags: 0, uid: 0,

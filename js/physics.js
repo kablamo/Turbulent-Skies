@@ -39,7 +39,7 @@ function surfaceY(x, z) {
   if (inThreshold(x, z) || onWing(x, z)) return 0;
   if (onRamp(x, z)) return -Math.max(0, z - REAR) * RAMP_SLOPE;
   if (S.phase === 'airport' && inAirport(x, z)) {
-    for (const v of vehicles) { const zone = vehicleZoneAt(v, x, z); if (zone) return v.floor; }
+    for (const v of vehicles) { const zone = vehicleZoneAt(v, x, z); if (zone) return zone[4] === 'bed' ? BED_TOP : v.floor; }
     return GROUND;
   }
   return null;
@@ -134,7 +134,7 @@ function areaName(x, z) {
 function respawn() {
   Object.assign(P, { x: 0, y: 0, z: -7.4, vy: 0, vz: 0, vx: 0, yaw: Math.PI, pitch: 0, falling: false, launched: false, lvx: 0, lvz: 0 });
   if (isClient()) { netSend({ t: 'fell' }); return; }   // the host applies the penalty
-  S.integrity -= 5; S.needs.calm -= 25; S.falls++;
+  S.integrity -= 3; S.needs.calm -= 15; S.falls++;
   say(pick(['You fell off the plane! Luckily you packed a parachute... and a grappling hook.', 'You fell off! A passing seagull carried you back. Passengers are rattled.', 'Somehow you climbed back in through the landing gear. The passengers saw everything.']), 'bad');
 }
 function startFalling(vx, vz, msg) {
@@ -154,6 +154,8 @@ function updatePlayer(dt) {
   }
   if (S.flying) { P.x = -0.75; P.z = -10.6; P.y = 0; return; }
   if (S.driving) { const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z); P.x = e.x; P.z = e.z; P.y = v.floor; return; }
+  // sitting in a vehicle seat: you go where the seat goes
+  if (P.sitV) { const pt = vehPoint(P.sitV, P.sitSeat.x, P.sitSeat.z); P.x = pt.x; P.z = pt.z; P.y = P.sitV.floor - 0.45; P.vy = 0; return; }
   // someone's carrying you (the host moves you; on a client you follow your carrier)
   if (carriedByName()) { if (isClient()) followCarrier(); return; }
   // on foot the arrow keys look around, so you can play without a mouse (in vehicles they steer)

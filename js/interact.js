@@ -20,6 +20,7 @@ function takeSeat(who) {
   else S.pilotRP = who;
 }
 function takeOff(who = LOCAL) {
+  if (P.sitV) standFromSeat();
   takeSeat(who);
   S.phase = 'takeoff'; S.toT = 0; S.toSpeed = 0; S.liftoff = false; S.alt = 0;
   // nobody gets left behind on the tarmac
@@ -31,6 +32,12 @@ function takeOff(who = LOCAL) {
 // what pressing E does on whatever the crosshair is over (null = nothing, look past it)
 function actionFor(ud, who = LOCAL) {
   if (ud.busDoor) return S.phase === 'airport' ? { key: 'busdoor', type: 'press', ready: true, label: `${ud.busDoor.door.target ? 'Close' : 'Open'} the bus door`, done: () => toggleBusDoor(ud.busDoor) } : null;
+  if (ud.vehSeat) {
+    const { v, s } = ud.vehSeat;
+    if (S.phase !== 'airport' || !who.isLocal) return null;
+    if (s.p || s.player) return { type: 'info', label: 'Someone is already sitting there.' };
+    return { key: 'vseat', type: 'press', ready: true, local: true, label: `Sit down in the ${v.name}`, done: () => sitInVehicle(v, s) };
+  }
   if (ud.drive) return S.phase === 'airport' ? { key: 'drive', type: 'press', ready: true, label: `Sit down and drive the ${ud.drive.name}`, done: () => enterVehicle(ud.drive, who) } : null;
   if (ud.item) {
     const it = ud.item;
@@ -136,6 +143,13 @@ function interact(dt) {
     else setPrompt('<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>C</kbd> camera <kbd>E</kbd> get up', true);
     return;
   }
+  if (P.sitV) {
+    const v = P.sitV;
+    if (S.press) standFromSeat();
+    S.press = S.drop = S.act = false;
+    setPrompt(P.sitV ? `Riding the ${v.name} · <kbd>E</kbd>stand up` : '', true);
+    return;
+  }
   const carrier = carriedByName();
   if (carrier) {
     if (S.jump) { if (isClient()) netSend({ t: 'wriggle' }); else wriggle(LOCAL); S.shake = Math.max(S.shake, .12); beep(600 + Math.random() * 300, .04, 'square', .03); }
@@ -165,7 +179,7 @@ function interact(dt) {
   let act = null, ref = null;
   for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
   // on a client the host does the real work; here we only show the prompt and send what you did
-  if (act && isClient() && act.type !== 'info') { const r = netRef(ref); act.done = () => netSend({ t: 'act', ref: r }); act.mash = () => netSend({ t: 'act', ref: r, how: 'mash' }); }
+  if (act && isClient() && act.type !== 'info' && !act.local) { const r = netRef(ref); act.done = () => netSend({ t: 'act', ref: r }); act.mash = () => netSend({ t: 'act', ref: r, how: 'mash' }); }
   const held = keys.e || mouseDown;
   if (!held) S.holdLock = false;
   let prog = -1;
@@ -303,6 +317,7 @@ function helpHTML() {
       <tr><td>${k_('Q')}</td><td>Open or close the bus door</td></tr>
       <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
       <tr><td>${k_('E')}</td><td>Get up</td></tr>
+      <tr><td>${k_('E')} on a seat</td><td>Ride along while someone else drives (or jump onto the truck bed)</td></tr>
       <tr><th colspan="2">Flying (captain's seat)</th></tr>
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer (and line up with the runway)</td></tr>
       <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Climb and dive (hold W to take off)</td></tr>

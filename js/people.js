@@ -341,7 +341,7 @@ function pickUp(obj, who = LOCAL) {
     if (obj.seat) { obj.seat.occupant = null; obj.seat = null; }
     if (obj.busSeat) { obj.busSeat.p = null; obj.busSeat = null; }
     if (obj.state === 'seated' && inAir()) { S.needs.calm -= 4; say(`${obj.name}: "Put me DOWN!"`); }
-    obj.calling = null; setPose(obj, 'stand');
+    obj.calling = null; obj.next = null; obj.rageT = 0; setPose(obj, 'stand');
     shout(obj, pick(YELLS.picked));
   } else { freeSlot(obj); if (obj.alive && obj.alive.kind === 'chicken') quack(); }
   obj.state = 'held'; who.held = obj; obj.holder = who;
@@ -523,6 +523,28 @@ function ejectPassenger(p, msg) {
   S.ejected++; S.needs.calm -= 25;
   say(msg || `🪂 ${p.name} left the plane. Their parachute opened. They will be writing a strongly-worded letter.`, 'bad');
 }
+// passengers who stay furious for too long storm off to an exit door and jump
+const RAGE = { warn: ['THAT\'S IT!', 'I\'ve had ENOUGH!', 'I want OFF this plane!', 'I\'m counting to ten…', 'Where\'s the exit?!'],
+  go: ['I\'M OUTTA HERE!', 'SO LONG, SUCKERS!', 'I\'LL TAKE MY CHANCES!', 'TELL MY CAT I LEFT!', 'BYEEEEE!'] };
+function updateRage(dt) {
+  if (S.phase !== 'flight') return;
+  for (const p of passengers) {
+    if (p.state !== 'seated' || p.calling) continue;
+    const furious = p.mood < 12 || (p.angry > 0 && p.mood < 30);
+    p.rageT = furious ? (p.rageT || 0) + dt : Math.max(0, (p.rageT || 0) - dt * 2);
+    if (p.rageT > 6 && !p.warned) { p.warned = true; shout(p, pick(RAGE.warn), 3); say(`😠 ${p.name} looks like they're about to do something silly…`); }
+    if (!furious) p.warned = false;
+    if (p.rageT > 13) rageQuit(p);
+  }
+}
+function rageQuit(p) {
+  const seat = p.seat, side = seat.x < 0 ? 'L' : 'R', s = side === 'L' ? -1 : 1;
+  seat.occupant = null; p.seat = null; p.rageT = 0; p.warned = false;
+  p.state = 'walk'; setPose(p, 'stand'); p.then = 'jump'; p.jumpSide = side;
+  p.path = [{ x: seat.x, z: seat.z - 0.7 }, { x: 0, z: seat.z - 0.7 }, { x: 0, z: 0 }, { x: s * (W - 0.5), z: 0 }];
+  shout(p, pick(RAGE.go), 4);
+  say(`😡 ${p.name} has had enough and is storming off to the ${sideWord(side)} exit door! Grab them before they jump!`, 'bad');
+}
 // where a passenger ends up after being thrown, dropped or knocked over
 function landed(p) {
   if (insideHull(p.x, p.z) || onRamp(p.x, p.z)) return sendToSeat(p);
@@ -596,7 +618,7 @@ function stepPassenger(p, dt) {
       if (p.path.length) p.path.shift();
       else if (busDoorOpen()) {
         // through the door and down the aisle to a free seat
-        const seat = bus.seats.find(s => !s.p);
+        const seat = bus.seats.find(s => !s.p && !s.player);
         if (seat) {
           seat.p = p; p.busSeat = seat; p.state = 'inBus';
           p.lx = bus.w + 0.7; p.lz = -3.1;
@@ -641,6 +663,12 @@ function stepPassenger(p, dt) {
       if (p.then === 'sit') { p.state = 'seated'; p.pose = 'sit'; p.x = p.seat.x; p.z = p.seat.z; }
       else if (p.then === 'board') sendToSeat(p);
       else if (p.then === 'lav') { p.state = 'wait'; p.waitT = rand(4, 7); p.next = () => sendToSeat(p); }
+      else if (p.then === 'jump') {
+        // fling the exit door open… and go
+        doors[p.jumpSide].target = 1; beep(200, .25, 'triangle', .08);
+        p.state = 'wait'; p.waitT = 1.3; shout(p, pick(RAGE.go), 3);
+        p.next = () => inAir() ? ejectPassenger(p, `🪂 ${p.name} JUMPED out of the ${sideWord(p.jumpSide)} exit door in a rage! (The door is still open…)`) : sendToSeat(p);
+      }
     }
     p.y = groundAt(p.x, p.z) ?? p.y;
     p.g.position.set(p.x, p.y, p.z);

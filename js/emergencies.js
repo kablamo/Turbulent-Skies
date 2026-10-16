@@ -101,6 +101,12 @@ const DEFS = {
     fail: () => say('The plane lurched into a dive before it caught itself!', 'bad'),
   },
 };
+// easier: more time to fix things, slower damage, smaller penalties, quicker repairs
+for (const k in DEFS) {
+  const d = DEFS[k];
+  d.deadline = Math.round(d.deadline * 1.5); d.drain *= 0.55; d.penalty = Math.round(d.penalty * 0.6);
+  for (const st of d.steps) { if (st.n) st.n = Math.ceil(st.n * 0.65); if (st.dur) st.dur *= 0.75; }
+}
 const stepAt = (f, st) => st.at.replace('$', f.side);
 const stepLabel = (f, st) => st.label.replace('$', sideWord(f.side));
 const faultKey = (id, side) => (DEFS[id].group || id) + (DEFS[id].sided ? side : '');

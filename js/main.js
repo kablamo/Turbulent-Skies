@@ -65,22 +65,22 @@ function updateFlight(dt, speed, prog) {
   if (stormNear > 0.3 && Math.random() < dt * 0.7) { S.flash = 0.7; setTimeout(() => beep(55, .8, 'sawtooth', .08), rand(100, 600)); }
 
   if (H) {
-    if (si && si.inside && Math.random() < dt * 0.05) randomFault();
+    if (si && si.inside && Math.random() < dt * 0.025) randomFault();
     // emergencies
     for (const f of [...S.faults]) {
       f.age += dt;
       S.integrity -= f.def.drain * (1 + f.age / 30) * dt;
       if (f.age >= f.def.deadline) endFault(f, true);
     }
-    S.integrity -= 0.3 * S.turb * dt;
+    S.integrity -= 0.15 * S.turb * dt;
     S.nextFault -= dt;
     if (!landing && S.nextFault <= 0) {
       if (S.firstFault) { spawnFault('fire'); S.firstFault = false; }
-      else if (S.faults.length < 1 + Math.floor(prog * 2.5)) randomFault();
-      S.nextFault = rand(32, 44) - prog * 12;
+      else if (S.faults.length < 1 + Math.floor(prog * 1.6)) randomFault();
+      S.nextFault = rand(48, 62) - prog * 12;
     }
     // a plane that's falling apart sometimes just loses a wall
-    if (!landing && S.integrity < 40 && Math.random() < dt * 0.012) spawnFault('hull');
+    if (!landing && S.integrity < 30 && Math.random() < dt * 0.006) spawnFault('hull');
     if (landing) updateLanding(dt);
   }
   if (S.faults.length) {
@@ -92,17 +92,17 @@ function updateFlight(dt, speed, prog) {
 
 function updatePassengerNeeds(dt, dead, openings) {
   const n = S.needs, belt = S.seatbelt;
-  n.hunger -= 0.4 * dt;
-  n.bored -= (belt ? 0.7 : 0.45) * (movieT > 0 ? 0.2 : 1) * dt;
-  n.comfort -= (belt ? 0.55 : 0.25) * dt;
+  n.hunger -= 0.26 * dt;
+  n.bored -= (belt ? 0.45 : 0.3) * (movieT > 0 ? 0.2 : 1) * dt;
+  n.comfort -= (belt ? 0.35 : 0.16) * dt;
   const scare = (crocLoose() ? 1.2 : 0) + S.faults.reduce((a, f) => a + (f.def.minor ? 0.3 : 0.8), 0) + S.turb * (belt ? 1 : 4) + Math.abs(S.roll) * 6 + (dead ? 0.2 : 0) + openings;
-  n.calm += (scare > 0.05 ? -scare : 1.0) * dt;
-  n.comfort -= (S.turb * (belt ? 0.4 : 2) + openings) * dt;
+  n.calm += (scare > 0.05 ? -scare * 0.65 : 1.6) * dt;
+  n.comfort -= (S.turb * (belt ? 0.3 : 1.4) + openings * 0.6) * dt;
   for (const k in n) n[k] = clamp(n[k], 0, 100);
   for (const k in S.cd) S.cd[k] = Math.max(0, S.cd[k] - dt);
 
   S.nextCall -= dt;
-  if (S.nextCall <= 0) { if (passengers.filter(p => p.calling).length < 2) startCall(); S.nextCall = rand(18, 28); }
+  if (S.nextCall <= 0) { if (passengers.filter(p => p.calling).length < 2) startCall(); S.nextCall = rand(26, 38); }
   // passengers stretch their legs and queue for the loo when the seatbelt sign is off
   S.nextStroll -= dt;
   if (S.nextStroll <= 0) {
@@ -115,13 +115,14 @@ function updatePassengerNeeds(dt, dead, openings) {
     }
   }
   for (const p of passengers) {
-    if (p.calling && (p.calling.t += dt) > 40) {
+    if (p.calling && (p.calling.t += dt) > 60) {
       p.calling = null; p.angry = 12; p.sprite.renderOrder = 0;
       n.calm -= 8; n.comfort -= 8;
       say(`${p.name} (${p.seat ? p.seat.label : '?'}) gave up waiting and is now furious. 😡`, 'bad');
     }
     p.angry = Math.max(0, p.angry - dt);
   }
+  updateRage(dt);
   S.complainT -= dt;
   const aboard = passengers.filter(p => p.state !== 'gone');
   if (S.complainT <= 0 && aboard.length) {
@@ -271,6 +272,7 @@ function update(dt) {
   } else plane.rotation.set(S.pitch, 0, 0);
 
   // --- player & camera
+  rideVehicles();
   updatePlayer(dt);
   S.shake = Math.max(0, S.shake - dt * 2);
   const shake = S.turb * 0.05 + S.shake * 0.08;
