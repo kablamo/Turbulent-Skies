@@ -73,11 +73,15 @@ const avatars = {};
 function makeAvatar(name, id) {
   const a = makePassenger(name);
   a.g.traverse(o => { if (o.isMesh) { delete o.userData.passenger; o.userData.playerId = id; } });
+  // a pilot's uniform: white shirt, navy trousers, black shoes (and a captain's hat)
+  a.mats.shirt.color.set(0xf2f4f8); a.mats.pants.color.set(0x1d2a4a); a.mats.shoes.color.set(0x151515);
+  a.pilot = true;
   const head = a.rig.head;
   cyl(0.19, 0.2, 0.12, M.dark, 0, 0.2, 0, head); box(0.3, 0.02, 0.18, M.dark, 0, 0.15, -0.16, head);
   box(0.12, 0.05, 0.02, mat(0xffd34a, { metalness: .8 }), 0, 0.22, -0.2, head);
   a.sprite.visible = false;
   shout(a, '✈ ' + name, 1e9);
+  if (MODEL.proto) applyModel(a);   // your Blender character, dressed as a pilot
   return a;
 }
 function removeAvatar(a) {

@@ -59,10 +59,23 @@ function prepareModel(scene) {
   const hipBone = joints.thigh[0] ? scene.getObjectByName(joints.thigh[0].name) : null;
   const hip = new THREE.Vector3(); if (hipBone) hipBone.getWorldPosition(hip); else hip.set(0, (box.max.y - box.min.y) * 0.35, 0);
   MODEL.footY = box.min.y; MODEL.hipY = hip.y - box.min.y; MODEL.centerZ = hip.z;
+  // every bone's rest position, so things like a pilot's hat can be pinned onto them
+  MODEL.restMat = {};
+  scene.traverse(o => { if (o.isBone) MODEL.restMat[o.name] = o.matrixWorld.clone(); });
+  // the head: everything above the neck joint
+  const neck = joints.neck[0] && scene.getObjectByName(joints.neck[0].name), neckY = neck ? new THREE.Vector3().setFromMatrixPosition(neck.matrixWorld).y : box.max.y - 0.5;
+  MODEL.head = new THREE.Box3();
+  const v = new THREE.Vector3();
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); if (v.y > neckY + 0.02) MODEL.head.expandByPoint(v); }
+  });
   return joints;
 }
 
 function applyModel(p) {
+  if (p.model) return;
   const m = THREE.SkeletonUtils.clone(MODEL.proto);
   const bones = {};
   for (const part in MODEL.joints) bones[part] = MODEL.joints[part].map(j => j && m.getObjectByName(j.name));
@@ -79,7 +92,48 @@ function applyModel(p) {
   p.rig.hips.traverse(o => { if (o.isMesh) o.visible = false; });
   p.rig.core.add(m);
   p.model = { root: m, bones };
+  if (p.pilot) pilotOutfit(p);
   poseModel(p);
+}
+// pin something onto a bone, given where it should sit on the model in its rest pose
+function pinToBone(bone, obj, x, y, z) {
+  if (!bone) return;
+  const inv = MODEL.restMat[bone.name].clone().invert();
+  obj.position.set(x, y, z).applyMatrix4(inv);
+  obj.quaternion.setFromRotationMatrix(inv);
+  bone.add(obj);
+}
+// other players: a captain's hat, gold-striped shoulders and a tie
+function pilotOutfit(p) {
+  const { bones } = p.model, h = MODEL.head;
+  const cx = (h.min.x + h.max.x) / 2, cz = (h.min.z + h.max.z) / 2, r = Math.max(h.max.x - h.min.x, h.max.z - h.min.z) / 2 * 0.9;
+  const gold = mat(0xffd34a, { metalness: .8, roughness: .3 }), navy = mat(0x1d2a4a), white = mat(0xf7f8fb);
+  const hat = new THREE.Group();
+  cyl(r * 0.8, r * 0.78, 0.07, M.dark, 0, 0.035, 0, hat);                       // black band
+  cyl(r * 0.82, r * 0.8, 0.12, white, 0, 0.13, 0, hat);                          // white crown
+  cyl(r * 0.95, r * 0.86, 0.06, white, 0, 0.21, 0, hat);                         // wide flat top
+  cyl(r * 0.81, r * 0.81, 0.02, gold, 0, 0.075, 0, hat);                         // gold trim
+  const visor = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r * 0.75, 0.025, 20, 1, false, Math.PI / 2, Math.PI), M.dark);
+  visor.position.set(0, 0.01, -r * 0.35); visor.rotation.x = -0.12; visor.scale.z = 0.8; hat.add(visor);
+  box(0.13, 0.08, 0.02, gold, 0, 0.12, -r * 0.82, hat);                          // badge
+  pinToBone(bones.neck[0], hat, cx, h.max.y - r * 0.2, cz);
+  // epaulettes ride on the upper arms
+  for (let i = 0; i < 2; i++) {
+    const b = bones.arm[i]; if (!b) continue;
+    const head = new THREE.Vector3().setFromMatrixPosition(MODEL.restMat[b.name]);
+    const ep = new THREE.Group(), s = i ? 1 : -1;
+    box(0.2, 0.03, 0.17, navy, 0, 0, 0, ep);
+    for (let k = 0; k < 3; k++) box(0.025, 0.035, 0.175, gold, -0.06 + k * 0.05, 0.002, 0, ep);
+    pinToBone(b, ep, head.x + s * 0.12, head.y + 0.13, head.z);
+  }
+  // a tie down the front of the tummy
+  const body = p.model.root.getObjectByName(MODEL.joints.neck[0] ? MODEL.proto.getObjectByName(MODEL.joints.neck[0].name).parent.name : '');
+  if (body) {
+    const tie = new THREE.Group(), red = mat(0xb3202a);
+    box(0.07, 0.06, 0.03, red, 0, 0, 0, tie);
+    const blade = box(0.09, 0.26, 0.025, red, 0, -0.16, 0, tie); blade.rotation.x = 0.25;
+    pinToBone(body, tie, 0, h.min.y - 0.05, MODEL.centerZ - 0.3);
+  }
 }
 
 const _R = new THREE.Quaternion(), _R2 = new THREE.Quaternion(), _W1 = new THREE.Quaternion(), _W2 = new THREE.Quaternion(), _E = new THREE.Euler();
@@ -117,6 +171,9 @@ if (THREE.GLTFLoader && THREE.SkeletonUtils) {
       MODEL.joints = prepareModel(scene);
       MODEL.proto = scene;
       passengers.forEach(applyModel);
+      // other players (anyone already in the room)
+      for (const id in avatars) applyModel(avatars[id]);
+      NET.remotes.forEach(r => applyModel(r.avatar));
     } catch (e) { console.warn('Custom passenger model failed, using the built-in people:', e); }
   }, undefined, () => console.info('No custom passenger model (needs a web server); using the built-in people.'));
 }
