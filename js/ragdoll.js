@@ -58,8 +58,8 @@ function ragSubstep(Rg, fx, fz) {
   for (let it = 0; it < 5; it++) {
     for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
     for (let k = 0; k < RAG_BEND.length; k++) ragStick(pos[RAG_BEND[k][0]], pos[RAG_BEND[k][2]], Rg.bend[k], true);
-    ragLimits(pos, Rg);
   }
+  ragLimits(pos, prev, Rg);
   // bump into the world: floors, walls (and doorways), the cabin ceiling
   for (let i = 0; i < pos.length; i++) {
     const p = pos[i], q = prev[i], r = RAG_R[i];
@@ -82,8 +82,7 @@ function ragSubstep(Rg, fx, fz) {
   }
   // the floor may have shoved a hand or foot the wrong way: put the joints right again
   for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
-  ragLimits(pos, Rg);
-  for (let i = 0; i < pos.length; i++) { const g = groundAt(pos[i].x, pos[i].z); if (g !== null && pos[i].y < g + RAG_R[i] && pos[i].y > g - 0.6) pos[i].y = g + RAG_R[i]; }
+  for (let i = 0; i < pos.length; i++) { const g = groundAt(pos[i].x, pos[i].z); if (g !== null && pos[i].y < g + RAG_R[i] && pos[i].y > g - 0.6) { prev[i].y += g + RAG_R[i] - pos[i].y; pos[i].y = g + RAG_R[i]; } }
 }
 // can a body point move from q to p? (high up in the cabin it sails over the seats; only the hull stops it)
 const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x, p.z)) || canGo(q.x, q.z, p.y, p.x, p.z);
@@ -91,7 +90,7 @@ const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x
 // knees only bend backwards and elbows only forwards (no bending the wrong way), legs can't swing up behind
 // the back or cross through each other, and arms can't go through the body.
 const _ja = new THREE.Vector3(), _jf = new THREE.Vector3(), _jx = new THREE.Vector3(), _jr = new THREE.Vector3(), _ju = new THREE.Vector3(), _jb = new THREE.Vector3(), _jd = new THREE.Vector3(), _je = new THREE.Vector3(), _jc = new THREE.Vector3();
-function ragLimits(pos, Rg) {
+function ragLimits(pos, prev, Rg) {
   if (Rg.targets) return;   // (while getting up, the springs already pull toward a natural pose)
   // the torso's own directions: right, up and back
   _ju.addVectors(pos[1], pos[2]).sub(pos[7]).sub(pos[8]).normalize();
@@ -101,20 +100,28 @@ function ragLimits(pos, Rg) {
   for (let i = 0; i < 2; i++) {
     const s = i ? 1 : -1;
     // hip: the thigh stays in front of / below the body, and doesn't cross far over the other leg
-    limitCone(pos[7 + i], pos[9 + i], Rg.len[14 + i * 2], { side: s, maxIn: 0.25, maxOut: 0.8, maxBack: 0.35, maxUp: 0.75 });
+    limitCone(pos[7 + i], pos[9 + i], prev[9 + i], Rg.len[14 + i * 2], LEG_RANGE[i]);
     // shoulder: arms are loose, but can't go far behind the back or across through the chest
-    limitCone(pos[1 + i], pos[3 + i], Rg.len[10 + i * 2], { side: s, maxIn: 0.35, maxOut: 1, maxBack: 0.6, maxUp: 1 });
+    limitCone(pos[1 + i], pos[3 + i], prev[3 + i], Rg.len[10 + i * 2], ARM_RANGE[i]);
     // knee bends backwards only, elbow forwards only
-    hinge(pos[7 + i], pos[9 + i], pos[11 + i], -1, _jr);
+    hinge(pos[7 + i], pos[9 + i], pos[11 + i], prev[11 + i], -1, _jr);
     // the elbow's hinge turns with the upper arm: it always folds the hand toward the front of the body
     _ja.subVectors(pos[3 + i], pos[1 + i]).normalize();
     _jf.copy(_jb).negate().addScaledVector(_ju, 0.3);
     _jx.crossVectors(_ja, _jf);
-    if (_jx.lengthSq() > 0.09) hinge(pos[1 + i], pos[3 + i], pos[5 + i], 1, _jx.normalize());
+    if (_jx.lengthSq() > 0.09) hinge(pos[1 + i], pos[3 + i], pos[5 + i], prev[5 + i], 1, _jx.normalize());
   }
 }
+const LEG_RANGE = [-1, 1].map(side => ({ side, maxIn: 0.25, maxOut: 0.8, maxBack: 0.35, maxUp: 0.75 }));
+const ARM_RANGE = [-1, 1].map(side => ({ side, maxIn: 0.35, maxOut: 1, maxBack: 0.6, maxUp: 1 }));
+// Each fix-up nudges the joint gently, and moves its "last position" by the same amount, so straightening a
+// joint never counts as speed (otherwise the limits and the bones fight and the body shakes itself to bits).
+function nudge(p, q, target, k) {
+  _jc.subVectors(target, p).multiplyScalar(k);
+  p.add(_jc); q.add(_jc);
+}
 // keep the bone from joint a to b inside a comfortable range (in the torso's directions), keeping its length
-function limitCone(a, b, len, L) {
+function limitCone(a, b, bPrev, len, L) {
   _jd.subVectors(b, a);
   let x = _jd.dot(_jr) * L.side, y = _jd.dot(_ju), z = _jd.dot(_jb);   // x: outwards, y: up, z: backwards
   const n = Math.hypot(x, y, z) || 1; x /= n; y /= n; z /= n;
@@ -125,15 +132,14 @@ function limitCone(a, b, len, L) {
   if (y > L.maxUp) { y = L.maxUp; bad = true; }
   if (!bad) return;
   _jd.set(0, 0, 0).addScaledVector(_jr, x * L.side).addScaledVector(_ju, y).addScaledVector(_jb, z).normalize();
-  b.lerp(_je.copy(a).addScaledVector(_jd, len), 0.9);
+  nudge(b, bPrev, _je.copy(a).addScaledVector(_jd, len), 0.35);
 }
 // a hinge (knee or elbow): the lower bone may only fold one way; if it's bent backwards, straighten it out
-function hinge(a, j, e, dir, axis) {
+function hinge(a, j, e, ePrev, dir, axis) {
   _jd.subVectors(j, a); _je.subVectors(e, j);
-  const bend = _jc.crossVectors(_jd, _je).dot(axis) * dir;
-  if (bend >= 0) return;
-  const lenE = _je.length();
-  e.lerp(_jc.copy(j).addScaledVector(_jd.normalize(), lenE), 0.9);
+  const lenE = _je.length(), bend = _jc.crossVectors(_jd, _je).dot(axis) * dir / (_jd.length() * lenE || 1);
+  if (bend > -0.15) return;                                   // (nearly straight is fine either way)
+  nudge(e, ePrev, _jx.copy(j).addScaledVector(_jd.normalize(), lenE), 0.35);
 }
 // push two points to exactly len apart (or, for a "bend", only apart if they're closer than len)
 const _rd = new THREE.Vector3();
