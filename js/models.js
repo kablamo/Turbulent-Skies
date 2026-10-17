@@ -154,14 +154,15 @@ function pilotOutfit(p) {
   visor.position.set(0, 0.01, -r * 0.35); visor.rotation.x = -0.12; visor.scale.z = 0.8; hat.add(visor);
   box(0.13, 0.08, 0.02, gold, 0, 0.12, -r * 0.82, hat);                          // badge
   pinToBone(bones.neck[0], hat, cx, h.max.y - r * 0.2, cz);
-  // epaulettes ride on the upper arms
+  // epaulettes lie flat on top of the shoulders (on the body, so they stay put when the arms swing)
+  const bodyB = bones.neck[0] && bones.neck[0].parent;
   for (let i = 0; i < 2; i++) {
-    const b = bones.arm[i]; if (!b) continue;
+    const b = bones.arm[i]; if (!b || !bodyB) continue;
     const head = new THREE.Vector3().setFromMatrixPosition(MODEL.restMat[b.name]);
     const ep = new THREE.Group(), s = i ? 1 : -1;
     box(0.2, 0.03, 0.17, navy, 0, 0, 0, ep);
     for (let k = 0; k < 3; k++) box(0.025, 0.035, 0.175, gold, -0.06 + k * 0.05, 0.002, 0, ep);
-    pinToBone(b, ep, head.x + s * 0.12, head.y + 0.13, head.z);
+    pinToBone(bodyB, ep, head.x - s * 0.06, MODEL.body.yNeck + 0.01, MODEL.body.cz);
   }
   // a tie down the front of the tummy
   const body = p.model.root.getObjectByName(MODEL.joints.neck[0] ? MODEL.proto.getObjectByName(MODEL.joints.neck[0].name).parent.name : '');
@@ -221,6 +222,11 @@ function fitCurls(g) {
   const nb = new THREE.Box3().setFromObject(g), old = MODEL.hairBox;
   if (old.isEmpty()) return g;
   const nc = nb.getCenter(new THREE.Vector3()), oc = old.getCenter(new THREE.Vector3());
+  // centre it side to side by the middle of all its points (a stray curl sticking out shouldn't push it over)
+  let sx = 0, n = 0; const v = new THREE.Vector3();
+  g.updateMatrixWorld(true);
+  g.traverse(o => { if (!o.isMesh) return; const pos = o.geometry.attributes.position; for (let i = 0; i < pos.count; i++) { sx += v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).x; n++; } });
+  if (n) nc.x = sx / n;
   const inPlace = Math.abs(nc.x - oc.x) < 0.15 && nb.min.y < old.max.y - 0.1;
   if (!inPlace) for (const o of g.children) o.position.add(new THREE.Vector3(oc.x - nc.x, old.min.y - 0.03 - nb.min.y, oc.z - 0.045 - nc.z));
   for (const o of g.children) o.userData.tint = true;   // it takes each person's hair colour

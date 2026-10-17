@@ -95,7 +95,8 @@ const BAGS = {
 };
 const bagBox = g => { g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(g); return b.isEmpty() ? new THREE.Box3(new THREE.Vector3(-0.2, 0, -0.2), new THREE.Vector3(0.2, 0.4, 0.2)) : b; };
 // the luggage for this flight
-const MANIFEST = ['suitcase', 'croc', 'backpack', 'duck', 'chicken', 'gnome', 'briefcase', 'tuba', 'cactus', 'toilet', 'moose', 'fishtank'];
+// mostly the Blender bags (suitcases, backpacks, briefcases), plus a few silly things
+const MANIFEST = ['suitcase', 'croc', 'backpack', 'suitcase', 'duck', 'briefcase', 'suitcase', 'chicken', 'backpack', 'briefcase', 'tuba', 'moose'];
 // bag states: queue (waiting inside the terminal) → belt → ride (on the trolley) → free (physics) / held / gone
 const items = [];
 function spawnBag(type) {
@@ -207,7 +208,7 @@ function makePassenger(name) {
 function setPose(p, pose) { p.pose = pose; }
 
 // ---------------------------------------------------------------- accessories
-const ACCESSORIES = ['backpack', 'backpack', 'pillow', 'balloon', 'camera', 'fanny', 'floatie', 'guitar'];
+const ACCESSORIES = ['backpack', 'backpack', 'pillow', 'balloon', 'fanny', 'guitar'];
 const ON_BACK = ['backpack', 'guitar'];
 // where things go on the built-in round body (in the hips' space; people face -z)
 const PROC_BODY = { cx: 0, cz: 0, r: 0.27, rz: 0.24, yMid: 0.32, yWaist: 0.1, yNeck: 0.6, neckR: 0.13, s: 1 };
