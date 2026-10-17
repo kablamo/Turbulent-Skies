@@ -736,15 +736,15 @@ function stepPassenger(p, dt) {
     // lying in a heap exactly as they landed, then getting up
     if ((p.downT -= dt) <= 0) {
       p.state = 'getup'; p.getT = 0;
-      p.ragUp = { q: p.rig.core.quaternion.clone(), from: p.g.position.clone(), to: new THREE.Vector3(p.x, p.y, p.z) };
+      p.ragUp = { q: p.rig.core.quaternion.clone(), from: p.g.position.clone(), to: new THREE.Vector3(p.x, p.y, p.z), limbs: captureLimbs(p) };
     }
     return;
   }
   if (p.state === 'getup' && p.rag) {
     p.getT += dt;
-    const k = smooth01(clamp(p.getT / 0.7, 0, 1));
+    const k = getupLimbs(p, p.ragUp.limbs, p.getT);
     ragGetUp(p, k);
-    if (k >= 1) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85; p.pose = 'stand'; landed(p); animatePax(p); }
+    if (p.getT >= GETUP_T) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85; p.pose = 'stand'; landed(p); animatePax(p); }
     return;
   }
   if (p.state === 'down') {

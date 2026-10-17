@@ -133,9 +133,29 @@ function updateRagdoll(p, dt) {
   p.y = g !== null && pel.y < g + 1 ? g : pel.y - 0.7;
   return done;
 }
-// climbing back up out of a heap: the body rights itself and stands, then the ragdoll is finished
+// Getting up out of a heap, like a person would: first the arms and legs untwist and gather in, then the
+// knees bend and the arms push forward as the body rises, and finally they straighten up to standing.
+const GETUP_T = 1.3, LIMB_KEYS = ['arm', 'fore', 'thigh', 'shin'];
+const captureLimbs = p => LIMB_KEYS.map(k => p.rig[k].map(j => j.quaternion.clone()));
+const _se = new THREE.Euler(), _sq = new THREE.Quaternion(), _sx = new THREE.Quaternion(), RAG_X = new THREE.Vector3(1, 0, 0);
+function getupLimbs(p, from, t) {
+  const kl = smooth01(clamp(t / 0.8, 0, 1));                 // limbs untwist toward standing
+  const kb = smooth01(clamp((t - 0.3) / (GETUP_T - 0.3), 0, 1));   // the body rises
+  const push = Math.sin(Math.PI * kb);                        // a crouch-and-push in the middle of standing up
+  LIMB_KEYS.forEach((key, n) => p.rig[key].forEach((j, i) => {
+    const s = i ? 1 : -1;
+    if (key === 'arm') _se.set(0, 0, s * 0.12); else if (key === 'fore') _se.set(0.1, 0, 0); else if (key === 'thigh') _se.set(0, 0, s * 0.04); else _se.set(0, 0, 0);
+    _sq.setFromEuler(_se);
+    j.quaternion.copy(from[n][i]).slerp(_sq, kl);
+    const bend = { arm: 0.7, fore: 0.6, thigh: 1.2, shin: -1.6 }[key] * push;
+    j.quaternion.premultiply(_sx.setFromAxisAngle(RAG_X, bend));
+  }));
+  return kb;
+}
+// the body rights itself and moves from where it lay to standing on its feet
 function ragGetUp(p, k) {
   const u = p.ragUp;
   p.rig.core.quaternion.copy(u.q).slerp(_rq.identity(), k);
   p.g.position.lerpVectors(u.from, u.to, k);
+  p.g.position.y -= Math.sin(Math.PI * k) * 0.22 * p.g.scale.y;   // hips low while crouching on the way up
 }

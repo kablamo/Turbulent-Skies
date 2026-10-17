@@ -421,8 +421,13 @@ function netAnimate(dt) {
     p.ragFresh = true;
     lerpTo(p.g.position, p.net.x, p.net.y, p.net.z, dt);
     p.g.rotation.set(0, p.net.ry, 0);
-    if (p.netCq) p.rig.core.quaternion.fromArray(p.netCq);
-    else p.rig.core.rotation.set(p.net.crx, 0, p.net.crz);
+    if (p.netCq) {
+      p.rig.core.quaternion.fromArray(p.netCq);
+      // getting up from a ragdoll: untwist the limbs here too, in step with the host
+      if (!p.cliUp) p.cliUp = { t: 0, limbs: captureLimbs(p) };
+      p.cliUp.t += dt;
+      getupLimbs(p, p.cliUp.limbs, p.cliUp.t);
+    } else { p.cliUp = null; p.rig.core.rotation.set(p.net.crx, 0, p.net.crz); }
     p.x = p.g.position.x; p.z = p.g.position.z;
     animatePax(p);
     if (p.bubble && p.bubble.visible && (p.bubbleT -= dt) <= 0) p.bubble.visible = false;
