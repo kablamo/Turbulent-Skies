@@ -733,18 +733,18 @@ function stepPassenger(p, dt) {
     return;
   }
   if (p.state === 'down' && p.rag) {
-    // lying in a heap exactly as they landed, then getting up
-    if ((p.downT -= dt) <= 0) {
-      p.state = 'getup'; p.getT = 0;
-      p.ragUp = { q: p.rig.core.quaternion.clone(), from: p.g.position.clone(), to: new THREE.Vector3(p.x, p.y, p.z), limbs: captureLimbs(p) };
-    }
+    // lying in a heap exactly as they landed (still physics: they settle and slump), then bouncing back up
+    stepRag(p, dt, 0, 0); mapRag(p, p.rag.pos, p.rag.yaw);
+    if ((p.downT -= dt) <= 0) { p.state = 'getup'; startGetUp(p); }
     return;
   }
   if (p.state === 'getup' && p.rag) {
-    p.getT += dt;
-    getupLimbs(p, p.ragUp.limbs, p.getT);
-    ragGetUp(p, p.getT);
-    if (p.getT >= GETUP_T) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85; p.pose = 'stand'; landed(p); animatePax(p); }
+    if (stepGetUp(p, dt)) {
+      const t = p.rag.targets, pel = ragMid(t, 7, 8);
+      p.rag = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85;
+      p.x = pel.x; p.z = pel.z; p.g.position.set(p.x, p.y, p.z);
+      p.pose = 'stand'; landed(p); animatePax(p);
+    }
     return;
   }
   if (p.state === 'down') {

@@ -40,11 +40,19 @@ function startRag(p, vx, vy, vz) {
 function ragSubstep(Rg, fx, fz) {
   const { pos, prev } = Rg, h2 = RAG_H * RAG_H;
   // move: keep going the way you were going, plus gravity and the wind
+  // (and when getting up, springs pulling every point toward where it would be standing)
+  const T = Rg.targets, k = Rg.k || 0, c = Rg.damp || 0;
   for (let i = 0; i < pos.length; i++) {
     const p = pos[i], q = prev[i];
     const vx = (p.x - q.x) * 0.998, vy = (p.y - q.y) * 0.998, vz = (p.z - q.z) * 0.998;
+    let ax = fx, ay = -RAG_G, az = fz;
+    if (T) {
+      ax += k * (T[i].x - p.x) - c * vx / RAG_H;
+      ay += k * (T[i].y - p.y) - c * vy / RAG_H + RAG_G * Rg.lift;
+      az += k * (T[i].z - p.z) - c * vz / RAG_H;
+    }
     q.copy(p);
-    p.x += vx + fx * h2; p.y += vy - RAG_G * h2; p.z += vz + fz * h2;
+    p.x += vx + ax * h2; p.y += vy + ay * h2; p.z += vz + az * h2;
   }
   // bones keep their length (a few passes, so they settle together)
   for (let it = 0; it < 5; it++) {
@@ -133,38 +141,37 @@ function updateRagdoll(p, dt) {
   p.y = g !== null && pel.y < g + 1 ? g : pel.y - 0.7;
   return done;
 }
-// Getting up out of a heap, bouncy-toy style: the arms and legs untwist and tuck in, then they SPRING up
-// (overshooting into a little hop), land with a squash and wobble back and forth until they settle.
-const GETUP_T = 1.5, LIMB_KEYS = ['arm', 'fore', 'thigh', 'shin'];
+// Getting back up, with physics too. Springs pull each body point toward where it would be if the person were
+// standing right there; they start weak and get stronger, so the heap heaves itself up, overshoots, bounces
+// and wobbles like a bouncy toy until it's standing still. Then the ragdoll hands back to the normal animation
+// (and since the body is already in the standing shape by then, there's no jump).
+const LIMB_KEYS = ['arm', 'fore', 'thigh', 'shin'];
 const captureLimbs = p => LIMB_KEYS.map(k => p.rig[k].map(j => j.quaternion.clone()));
-const _se = new THREE.Euler(), _sq = new THREE.Quaternion(), _sx = new THREE.Quaternion(), RAG_X = new THREE.Vector3(1, 0, 0), RAG_Z = new THREE.Vector3(0, 0, 1);
-const upU = t => clamp((t - 0.3) / 0.45, 0, 1);                           // 0 → 1 while springing up
-const upSpring = u => u <= 0 ? 0 : 1 - Math.exp(-6 * u) * Math.cos(10 * u);   // overshoots ~15%, then settles
-function getupLimbs(p, from, t) {
-  const kl = smooth01(clamp(t / 0.5, 0, 1)), u = upU(t), sp = upSpring(u);
-  // tuck in while gathering, stretch out as they spring, and a squash as they land from the hop
-  const tuck = t < 0.3 ? smooth01(t / 0.3) : Math.max(0, 1 - u * 2.5);
-  const squash = u > 0.35 ? Math.max(0, 1 - sp) * 4 : 0;
-  const bendK = clamp(tuck + squash, 0, 1);
-  LIMB_KEYS.forEach((key, n) => p.rig[key].forEach((j, i) => {
-    const s = i ? 1 : -1;
-    if (key === 'arm') _se.set(0, 0, s * 0.12); else if (key === 'fore') _se.set(0.1, 0, 0); else if (key === 'thigh') _se.set(0, 0, s * 0.04); else _se.set(0, 0, 0);
-    _sq.setFromEuler(_se);
-    j.quaternion.copy(from[n][i]).slerp(_sq, kl);
-    const bend = { arm: 0.6, fore: 0.7, thigh: 1.2, shin: -1.6 }[key] * bendK;
-    j.quaternion.premultiply(_sx.setFromAxisAngle(RAG_X, bend));
-  }));
+// where each body point would be if they stood at (x, y, z) facing yaw
+function standPoints(p, x, y, z, yaw) {
+  const r = p.rig, save = { pos: p.g.position.clone(), yaw: p.g.rotation.y, q: r.core.quaternion.clone(), limbs: captureLimbs(p), pose: p.pose };
+  p.g.position.set(x, y, z); p.g.rotation.set(0, yaw, 0); r.core.quaternion.identity();
+  p.pose = 'stand'; animatePax(p);
+  const pts = ragPoints(p);
+  p.g.position.copy(save.pos); p.g.rotation.set(0, save.yaw, 0); r.core.quaternion.copy(save.q); p.pose = save.pose;
+  LIMB_KEYS.forEach((k, n) => r[k].forEach((j, i) => j.quaternion.copy(save.limbs[n][i])));
+  return pts;
 }
-// the body springs from where it lay up onto its feet (with a hop), then wobbles to a stop
-function ragGetUp(p, t) {
-  const u = upU(t), sp = upSpring(u), g = p.ragUp, sc = p.g.scale.y;
-  p.rig.core.quaternion.copy(g.q).slerp(_sq.identity(), smooth01(clamp(u * 1.4, 0, 1)));
-  p.g.position.lerpVectors(g.from, g.to, clamp(sp, 0, 1));
-  p.g.position.y += Math.max(0, sp - 1) * 1.8 * sc;                   // the hop
-  if (t < 0.3) p.g.position.y -= smooth01(t / 0.3) * 0.1 * sc;        // scrunch down before springing
-  if (u >= 1) {
-    const tau = t - 0.75, damp = Math.exp(-5 * tau);
-    p.rig.core.quaternion.premultiply(_sx.setFromAxisAngle(RAG_X, 0.28 * damp * Math.sin(13 * tau)))
-      .premultiply(_sq.setFromAxisAngle(RAG_Z, 0.14 * damp * Math.sin(11 * tau + 1)));
-  }
+function startGetUp(p) {
+  const Rg = p.rag, pel = ragMid(Rg.pos, 7, 8), g = groundAt(pel.x, pel.z);
+  Rg.targets = standPoints(p, pel.x, g === null ? p.y : g, pel.z, Rg.yaw);
+  Rg.upT = 0; Rg.done = 0;
+}
+// one frame of springing up; returns true once they're standing steady
+function stepGetUp(p, dt) {
+  const Rg = p.rag;
+  Rg.upT += dt;
+  const ramp = clamp(Rg.upT / 0.8, 0, 1);
+  Rg.k = 45 * ramp * ramp; Rg.damp = 2.2 * ramp; Rg.lift = ramp;   // springy, so it bounces
+  stepRag(p, dt, 0, 0);
+  mapRag(p, Rg.pos, Rg.yaw);
+  let err = 0, fast = 0;
+  for (let i = 0; i < Rg.pos.length; i++) { err = Math.max(err, Rg.pos[i].distanceTo(Rg.targets[i])); fast = Math.max(fast, Rg.pos[i].distanceTo(Rg.prev[i]) / RAG_H); }
+  Rg.done = err < 0.16 && fast < 0.4 ? Rg.done + dt : 0;
+  return Rg.done > 0.12 || Rg.upT > 4;
 }

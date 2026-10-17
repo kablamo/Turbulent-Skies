@@ -268,8 +268,7 @@ function buildSnap() {
     I: items.map(it => [r2(it.g.position.x), r2(it.g.position.y), r2(it.g.position.z), r2(it.g.rotation.y), it.state, it.g.visible ? 1 : 0, it.type === BAGS.egg ? 1 : 0, it.caged ? 1 : 0]),
     X: passengers.map(p => [r2(p.g.position.x), r2(p.g.position.y), r2(p.g.position.z), r2(p.g.rotation.y), r2(p.rig.core.rotation.x), r2(p.rig.core.rotation.z),
       p.pose, r2(p.walkT), p.state, p.bubble && p.bubble.visible ? p.bubbleText : '', r2(p.mood), p.calling ? p.calling.text : null, p.seat ? seats.indexOf(p.seat) : -1, p.angry > 0 ? 1 : 0,
-      p.rag && p.state !== 'getup' ? p.rag.pos.flatMap(v => [r2(v.x), r2(v.y), r2(v.z)]) : null,                    // a ragdoll's joints
-      p.state === 'getup' && p.rag ? p.rig.core.quaternion.toArray().map(v => Math.round(v * 1000) / 1000) : null]),
+      p.rag ? p.rag.pos.flatMap(v => [r2(v.x), r2(v.y), r2(v.z)]) : null]),                    // a ragdoll's joints
     pl: players, movie: r2(movieT), ev: NET.events.splice(0),
   };
 }
@@ -348,10 +347,10 @@ function applySnap(m) {
     it.net = { x, y, z, ry }; it.state = state; it.g.visible = !!vis;
     if (!it.placed) { it.g.position.set(x, y, z); it.placed = true; }
   });
-  m.X.forEach(([x, y, z, ry, crx, crz, pose, walkT, state, bubble, mood, calling, seatI, angry, rg, cq], i) => {
+  m.X.forEach(([x, y, z, ry, crx, crz, pose, walkT, state, bubble, mood, calling, seatI, angry, rg], i) => {
     const p = passengers[i];
     if (p.state === 'gone') return;
-    p.netRag = rg; p.netCq = cq;
+    p.netRag = rg;
     p.net = { x, y, z, ry, crx, crz }; p.pose = pose; p.walkT = walkT; p.state = state; p.mood = mood; p.angry = angry ? 1 : 0;
     p.seat = seatI >= 0 ? seats[seatI] : null;
     if (bubble && (bubble !== p.bubbleText || !p.bubble.visible)) shout(p, bubble, 3);
@@ -421,13 +420,7 @@ function netAnimate(dt) {
     p.ragFresh = true;
     lerpTo(p.g.position, p.net.x, p.net.y, p.net.z, dt);
     p.g.rotation.set(0, p.net.ry, 0);
-    if (p.netCq) {
-      p.rig.core.quaternion.fromArray(p.netCq);
-      // getting up from a ragdoll: untwist the limbs here too, in step with the host
-      if (!p.cliUp) p.cliUp = { t: 0, limbs: captureLimbs(p) };
-      p.cliUp.t += dt;
-      getupLimbs(p, p.cliUp.limbs, p.cliUp.t);
-    } else { p.cliUp = null; p.rig.core.rotation.set(p.net.crx, 0, p.net.crz); }
+    p.rig.core.rotation.set(p.net.crx, 0, p.net.crz);
     p.x = p.g.position.x; p.z = p.g.position.z;
     animatePax(p);
     if (p.bubble && p.bubble.visible && (p.bubbleT -= dt) <= 0) p.bubble.visible = false;
