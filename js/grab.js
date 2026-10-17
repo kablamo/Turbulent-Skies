@@ -6,14 +6,14 @@
 //   · anything solid (a wall, a seat, the plane…) is something to hang on to: the wind can't blow you away
 // The host does the moving of bags and passengers for everyone; each player only says what their hands hold.
 'use strict';
-const GRAB = { hands: [null, null], reach: [null, null] };   // your hands: null, { k: 'item', i }, { k: 'pax', i, pt } or { k: 'wall', at: [x, y, z] }
+const GRAB = { hands: [null, null], reach: [null, null], mode: null };   // mode: 'act' (using something) or 'grab'   // your hands: null, { k: 'item', i }, { k: 'pax', i, pt } or { k: 'wall', at: [x, y, z] }
 let rightMouse = false;
 canvas.addEventListener('mousedown', e => { if (e.button === 2) rightMouse = true; });
 addEventListener('mouseup', e => { if (e.button === 2) rightMouse = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { rightMouse = false; });
 
-const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
+const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && GRAB.mode === 'grab' && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
   && ME && ME.rag && !ME.rag.limp;
 const holdingWall = () => GRAB.hands.some(h => h && h.k === 'wall');
 const _gr = new THREE.Vector3(), _gl = new THREE.Vector3();
@@ -65,7 +65,7 @@ function updateGrab() {
       if (['gone', 'held', 'bus', 'inBus', 'outBus'].includes(p.state) || p.g.position.distanceTo(hp) > 2) continue;
       const pts = p.rag ? p.rag.pos : (p.netRag ? p.cliRag : ragPoints(p));
       if (!pts) continue;
-      let best = -1, bd = 0.3;
+      let best = -1, bd = 0.36;
       pts.forEach((v, k) => { const dd = v.distanceTo(hp); if (dd < bd) { bd = dd; best = k; } });
       if (best >= 0) got = { k: 'pax', i: j, pt: best };
     }
@@ -145,6 +145,12 @@ function dragVehicle(v, lx, lz, hp, dt) {
   syncVehicle(v);
 }
 function letGo(g) {
-  if (g.k === 'item') { const it = items[g.i]; if (it && it.state === 'grabbed') it.state = 'free'; }
+  if (g.k === 'item') {
+    const it = items[g.i]; if (!it || it.state !== 'grabbed') return;
+    it.state = 'free';
+    // let go of a bag over a luggage trolley (gently): it goes on the trolley
+    const v = S.phase === 'airport' && Math.hypot(it.vx, it.vz) < 3 && trolleyNear(it.x, it.z, 0.35);
+    if (v) { const slot = trolleySpot(v, it); if (slot) { slot.item = it; it.slot = slot; it.state = 'ride'; beep(380, .08, 'triangle', .05); } else say(trolleyFullMsg(v, it), 'bad'); }
+  }
   else if (g.k === 'pax') { const p = passengers[g.i]; if (p && p.rag && p.rag.pins) p.rag.pins = []; }
 }

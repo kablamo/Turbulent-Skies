@@ -1,6 +1,7 @@
 // Looking at things and pressing E: stations, luggage, passengers, vehicles. Also input and markers.
 'use strict';
 const raycaster = new THREE.Raycaster(), _eyeW = new THREE.Vector3();
+const INTERACT = TOUCH ? '✊ Interact' : '🖱 Interact';
 raycaster.far = 2.7;
 const CENTER = new THREE.Vector2(0, 0);
 const keys = {};
@@ -42,13 +43,13 @@ function actionFor(ud, who = LOCAL) {
   if (ud.item) {
     const it = ud.item;
     if (it.state === 'gone' || it.state === 'queue' || it.state === 'held' || it.state === 'grabbed') return null;
-    return { key: 'pick', type: 'press', ready: true, label: `Pick up the ${it.name}`, done: () => pickUp(it, who) };
+    return { key: 'grab', type: 'grab', ready: true, label: `grab the ${it.name}` };   // (your hands do it: grab.js)
   }
   if (ud.passenger) {
     const p = ud.passenger;
     if (p.state === 'gone' || p.state === 'bus') return null;
     if (p.calling) return { key: 'call' + p.seat.label, type: 'press', ready: true, label: `Help ${p.name} (${p.seat.label}), who ${p.calling.text}`, done: () => resolveCall(p) };
-    return { key: 'pick', type: 'press', ready: true, label: `Pick up ${p.name} ${p.face}`, done: () => pickUp(p, who) };
+    return { key: 'grab', type: 'grab', ready: true, label: `grab ${p.name} ${p.face}` };
   }
   if (ud.playerId) {
     // another player! (on a client this only shows the prompt; the host checks it for real)
@@ -121,8 +122,15 @@ function setPrompt(html, dim) {
   if (html !== lastPrompt) { $('prompt').innerHTML = html; lastPrompt = html; }
   $('prompt').classList.toggle('dim', !!dim);
 }
+// The Interact button is the right mouse (✊ on touch screens). Pressed while pointing at something you can use
+// (a door, a seat, a control, a repair…) it uses it, just like E; pointed at a bag, a passenger or nothing, your
+// hands reach out and grab instead (grab.js). Busy with something (driving, carrying…) it does what E would.
+const interactDown = () => rightMouse || keys.grab;
 function interact(dt) {
   $('holdbar').style.display = 'none';
+  const rDown = interactDown(), rise = rDown && !GRAB.mode;
+  if (!rDown) GRAB.mode = null;
+  if (rise && (S.driving || S.flying || S.held || carryingName() || carriedByName() || P.sitV)) { GRAB.mode = 'act'; S.press = true; }
   if (S.driving) {
     if (isClient()) { if (S.press) netSend({ t: 'exit' }); else if (S.act) netSend({ t: 'vehAct' }); else if (S.drop) netSend({ t: 'busDoor' }); }
     else if (S.press) exitVehicle();
@@ -131,9 +139,9 @@ function interact(dt) {
     S.press = S.drop = S.act = false;
     if (!S.driving) return;
     const v = S.driving;
-    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.whole.item ? 'the ' + v.whole.item.name : trolleyLoad(v) + '/' + v.slots.length + ' bags'}`, true); return; }
+    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>${INTERACT}</kbd>let go · ${v.whole.item ? 'the ' + v.whole.item.name : trolleyLoad(v) + '/' + v.slots.length + ' bags'}`, true); return; }
     const extra = ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
-    setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>E</kbd>get up${extra}`, true);
+    setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>${INTERACT}</kbd>get up${extra}`, true);
     return;
   }
   if (S.flying) {
@@ -142,14 +150,14 @@ function interact(dt) {
     S.press = S.drop = S.act = false;
     if (S.phase === 'takeoff' && !S.liftoff) setPrompt(S.toSpeed > 0.75 ? '<kbd>Hold W</kbd> PULL UP!' : `Speed ${Math.round(S.toSpeed * 160)} km/h… keep it straight`, S.toSpeed <= 0.75);
     else if (S.phase === 'landing') setPrompt(S.touched ? 'Braking…' : '<kbd>A</kbd><kbd>D</kbd> line up with the runway <kbd>C</kbd> camera', true);
-    else setPrompt('<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>C</kbd> camera <kbd>E</kbd> get up', true);
+    else setPrompt(`<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>C</kbd> camera <kbd>${INTERACT}</kbd> get up`, true);
     return;
   }
   if (P.sitV) {
     const v = P.sitV;
     if (S.press) standFromSeat();
     S.press = S.drop = S.act = false;
-    setPrompt(P.sitV ? `Riding the ${v.name} · <kbd>E</kbd>stand up` : '', true);
+    setPrompt(P.sitV ? `Riding the ${v.name} · <kbd>${INTERACT}</kbd>stand up` : '', true);
     return;
   }
   const carrier = carriedByName();
@@ -165,7 +173,7 @@ function interact(dt) {
     else if (S.press) releasePlayer(LOCAL, 11);
     else if (S.drop) releasePlayer(LOCAL, 1.2);
     S.press = S.drop = S.act = false;
-    setPrompt(`<kbd>E</kbd>throw ${carrying} <kbd>Q</kbd>put down`, true);
+    setPrompt(`<kbd>${INTERACT}</kbd>throw ${carrying} <kbd>Q</kbd>put down`, true);
     return;
   }
   if (S.held) {
@@ -173,7 +181,7 @@ function interact(dt) {
     else if (S.press) throwHeld(9);
     else if (S.drop) throwHeld(1.2);
     S.press = S.drop = S.act = false;
-    if (S.held) setPrompt(`<kbd>E</kbd>throw ${S.held.kind === 'pax' ? S.held.name : 'the ' + S.held.name} <kbd>Q</kbd>put down`, true);
+    if (S.held) setPrompt(`<kbd>${INTERACT}</kbd>throw ${S.held.kind === 'pax' ? S.held.name : 'the ' + S.held.name} <kbd>Q</kbd>put down`, true);
     return;
   }
   raycaster.setFromCamera(CENTER, camera);
@@ -184,6 +192,7 @@ function interact(dt) {
   const hits = P.falling ? [] : raycaster.intersectObjects(targets, false).filter(h => !third || (h.point.distanceTo(_eyeW) < 2.6 && h.distance > S.camDist * 0.7));
   let act = null, ref = null;
   for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
+  const decide = () => { if (rDown && !GRAB.mode) { GRAB.mode = act && act.ready && act.type !== 'grab' && act.type !== 'info' ? 'act' : 'grab'; if (GRAB.mode === 'act') S.press = true; } };
   // third person: if the crosshair isn't on anything, try what's just in front of your character
   if (third && !act && !P.falling) {
     raycaster.far = 2.4;
@@ -196,7 +205,8 @@ function interact(dt) {
   }
   // on a client the host does the real work; here we only show the prompt and send what you did
   if (act && isClient() && act.type !== 'info' && !act.local) { const r = netRef(ref); act.done = () => netSend({ t: 'act', ref: r }); act.mash = () => netSend({ t: 'act', ref: r, how: 'mash' }); }
-  const held = keys.e || mouseDown;
+  decide();
+  const held = keys.e || mouseDown || (rDown && GRAB.mode === 'act');
   if (!held) S.holdLock = false;
   let prog = -1;
   if (act && act.type === 'hold' && act.ready && held && !S.holdLock) {
@@ -221,7 +231,7 @@ function interact(dt) {
   if (act) {
     if (act.type === 'info') { html = act.label; dim = true; }
     else if (!act.ready) { html = act.why || act.label; dim = true; }
-    else html = `<kbd>${act.type === 'hold' ? 'Hold E' : act.type === 'mash' ? 'Mash E' : 'E'}</kbd>${act.label}`;
+    else html = `<kbd>${act.type === 'hold' || act.type === 'grab' ? 'Hold ' : act.type === 'mash' ? 'Mash ' : ''}${INTERACT}</kbd>${act.label}`;
   }
   setPrompt(html, dim);
   if (prog >= 0) { $('holdbar').style.display = 'block'; $('holdbar').firstChild.style.width = clamp(prog, 0, 1) * 100 + '%'; }
@@ -290,7 +300,8 @@ function updateFPArms(dt) {
   if (holding !== FP.wasHolding) { if (holding) FP.pickT = 0; else FP.throwT = 0; }
   FP.wasHolding = holding; FP.pickT += dt; FP.throwT += dt;
   const throwing = FP.throwT < 0.4;
-  fpArms.visible = S.view === 'first' && (holding || pushing || throwing) && !S.chase && !S.flying;
+  const reaching = grabbing();   // grabbing: show your real (ragdoll) hands, wherever the physics has them
+  fpArms.visible = S.view === 'first' && (holding || pushing || throwing || reaching) && !S.chase && !S.flying;
   if (!fpArms.visible) return;
   // picking something up: you crouch (the camera dips) as your hands reach down for it
   const pk = clamp(FP.pickT / PICK_T, 0, 1), dip = holding ? Math.sin(Math.PI * pk) : 0;
@@ -299,7 +310,9 @@ function updateFPArms(dt) {
   const bag = S.held && S.held.kind !== 'pax' ? S.held : null, bagAt = new THREE.Vector3();
   if (bag) camera.worldToLocal(bag.g.getWorldPosition(bagAt));
   for (const a of FP.arms) {
-    if (pushing) {
+    if (reaching) {
+      camera.worldToLocal(plane.localToWorld(_hand.copy(ME.rag.pos[a.s > 0 ? 6 : 5])));
+    } else if (pushing) {
       // hands on the trolley's handle bar, wherever you look
       const w = vehPoint(v, a.s * 0.33, 0.85);
       camera.worldToLocal(_hand.set(w.x, GROUND + 1.34, w.z));
@@ -373,7 +386,7 @@ function helpHTML() {
       <tr><td>Mouse or ${k_('←', '↑', '↓', '→')}</td><td>Look around</td></tr>
       <tr><td>${k_('Shift')}</td><td>Run</td></tr>
       <tr><td>${k_('Space')}</td><td>Jump</td></tr>
-      <tr><td>${k_('E')} or click</td><td>Use, pick up, throw what you're carrying</td></tr>
+      <tr><td>${k_('E')} or left click</td><td>Also interacts (uses things) if you'd rather</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying (next to the luggage trolley, it goes on the trolley)</td></tr>
       <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
@@ -394,7 +407,7 @@ function helpHTML() {
       <tr><th colspan="2">Game</th></tr>
       <tr><td>${k_('P')}</td><td>Pause</td></tr>
       <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
-      <tr><td>Hold the right mouse button</td><td>Reach out and grab: drag trolleys about, carry bags, drag passengers (they go floppy), hang on to walls</td></tr>
+      <tr><td>Right mouse: <b>Interact</b></td><td>Use what you're pointing at (doors, seats, controls, repairs). Hold it on a bag, a passenger, a trolley or a wall and your hands grab it; let go to drop or throw</td></tr>
       <tr><td>Hold ${k_('R')}</td><td>Go floppy (you're a ragdoll!) — let go to get back up</td></tr>
       <tr><td>${k_('V')}</td><td>Switch between third person and first person</td></tr>
       <tr><td>${k_('H')}</td><td>This help screen</td></tr>

@@ -551,7 +551,7 @@ function updateMe(dt) {
     P.x = pel.x; P.z = pel.z; P.y = g !== null && pel.y < g + 1.3 ? g : pel.y - 0.75; P.vy = 0; P.mvx = P.mvz = 0;
     if (g === null && pel.y < -2.5) { ME.rag = null; startFalling(0, 2); return; }   // tumbled off into the sky
     // let go of R and come to rest: the springs come back on and you heave yourself up
-    if (!keys.r && Rg.limpT > 0.5 && (Rg.still > 0.25 || Rg.limpT > 5)) {
+    if (!keys.r && Rg.limpT > 0.5 && (Rg.still > 0.25 || Rg.limpT > 3)) {
       Rg.limp = false; Rg.ramp = 0;
       let best = 1e9;
       for (let k = 0; k < 12; k++) {   // stand up facing whichever way is least twisting

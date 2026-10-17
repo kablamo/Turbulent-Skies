@@ -51,7 +51,7 @@ function ragSubstep(Rg, fx, fz) {
       // target's speed, so a body that's walking along doesn't drag behind
       const w = kw ? kw[i] : 1, tx = tv ? tv[i].x : 0, ty = tv ? tv[i].y : 0, tz = tv ? tv[i].z : 0;
       ax += k * w * (T[i].x - p.x) + c * w * (tx - vx / RAG_H);
-      ay += k * w * (T[i].y - p.y) + c * w * (ty - vy / RAG_H) + RAG_G * Rg.lift * w;
+      ay += k * w * (T[i].y - p.y) + c * w * (ty - vy / RAG_H) + RAG_G * Rg.lift;   // (the muscles hold the body's whole weight up)
       az += k * w * (T[i].z - p.z) + c * w * (tz - vz / RAG_H);
     }
     q.copy(p);
