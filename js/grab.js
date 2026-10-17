@@ -1,5 +1,6 @@
-// Grabbing, Human Fall Flat style. Hold G (or the right mouse button) and both arms reach out where you're
-// looking. Whatever a hand touches, it holds on to:
+// Grabbing, Human Fall Flat style. Hold the right mouse button (✊ on a touch screen) and both arms reach out
+// where you're looking. Whatever a hand touches, it holds on to:
+//   · a luggage trolley: drag it about (or shove it) by wherever you're holding it
 //   · a bag dangles from your hand, and flies off with the swing of your arm when you let go
 //   · a passenger goes floppy and gets dragged along by a wrist or an ankle
 //   · anything solid (a wall, a seat, the plane…) is something to hang on to: the wind can't blow you away
@@ -12,7 +13,7 @@ addEventListener('mouseup', e => { if (e.button === 2) rightMouse = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { rightMouse = false; });
 
-const grabbing = () => S.running && !S.paused && (keys.g || rightMouse) && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
+const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
   && ME && ME.rag && !ME.rag.limp;
 const holdingWall = () => GRAB.hands.some(h => h && h.k === 'wall');
 const _gr = new THREE.Vector3(), _gl = new THREE.Vector3();
@@ -35,6 +36,7 @@ function reachHands(goal) {
   for (let i = 0; i < 2; i++) {
     const h = GRAB.hands[i], s = i ? 1 : -1;
     if (h && h.k === 'wall') _gr.fromArray(h.at);
+    else if (h && h.k === 'veh') { const v = vehicles[h.i], q = vehPoint(v, h.lx, h.lz); _gr.set(q.x, h.y, q.z); }   // hands stay on the trolley
     else _gr.copy(goal[1 + i]).addScaledVector(d, 0.62).add(_gl.set(rx * s * 0.08, -0.05, rz * s * 0.08));
     goal[5 + i].copy(_gr);
     GRAB.reach[i] = (GRAB.reach[i] || new THREE.Vector3()).copy(_gr);
@@ -67,10 +69,20 @@ function updateGrab() {
       pts.forEach((v, k) => { const dd = v.distanceTo(hp); if (dd < bd) { bd = dd; best = k; } });
       if (best >= 0) got = { k: 'pax', i: j, pt: best };
     }
-    // something solid? (the hand's pushed into a wall, a seat, a vehicle…)
+    // a luggage trolley? (anywhere on it: the handle, the sides, the bed; the hand stops at its edge, so it
+    // counts if the hand's right by it, or it's what the hand was reaching into)
+    const t0 = GRAB.reach[i];
+    for (const v of trolleys) {
+      if (got || S.phase !== 'airport') break;
+      const l = vehLocal(v, hp.x, hp.z), lt = t0 ? vehLocal(v, t0.x, t0.z) : l;
+      const near = (q, pad) => Math.abs(q.x) < v.w + pad && Math.abs(q.z) < v.l + pad;
+      if ((near(l, 0.3) || near(lt, 0.05)) && hp.y > v.bedTop - 0.4 && hp.y < GROUND + 1.5)
+        got = { k: 'veh', i: vehicles.indexOf(v), lx: Math.round(clamp(l.x, -v.w, v.w) * 100) / 100, lz: Math.round(clamp(l.z, -v.l, v.l) * 100) / 100, y: Math.round(hp.y * 100) / 100 };
+    }
+    // something solid? (the hand's pushed into a wall, a seat, a vehicle…; the floor doesn't count)
     // (the hand stops at the surface, so: is the spot it's reaching for inside something?)
-    const t = GRAB.reach[i];
-    if (!got && t && hp.distanceTo(t) < 0.6 && (!canGo(P.x, P.z, hp.y, hp.x, hp.z) || !canGo(P.x, P.z, t.y, t.x, t.z))) got = { k: 'wall', at: hp.toArray().map(v => Math.round(v * 100) / 100) };
+    const t = GRAB.reach[i], wy = P.y + 0.6;
+    if (!got && t && hp.distanceTo(t) < 0.6 && (!canGo(P.x, P.z, wy, hp.x, hp.z) || !canGo(P.x, P.z, wy, t.x, t.z))) got = { k: 'wall', at: hp.toArray().map(v => Math.round(v * 100) / 100) };
     if (got) { GRAB.hands[i] = got; beep(got.k === 'wall' ? 260 : 420, .06, 'triangle', .04); }
   }
   // hands on a wall stay put there
@@ -91,6 +103,7 @@ function hostGrabs(dt) {
       who.gPrev[h] = cur && cur.k !== 'wall' ? cur : null;
       if (!cur || cur.k === 'wall' || !hp) continue;
       if (cur.k === 'item') holdItem(items[cur.i], hp, dt);
+      else if (cur.k === 'veh') dragVehicle(vehicles[cur.i], cur.lx, cur.lz, hp, dt);
       else holdPassenger(passengers[cur.i], cur.pt, hp, `${idOf(who)}${h}`);
     }
   }
@@ -116,6 +129,20 @@ function holdPassenger(p, pt, hp, key) {
   }
   p.rag.pins = (p.rag.pins || []).filter(q => q.key !== key);
   p.rag.pins.push({ key, i: pt, pos: hp.clone() });
+}
+// dragging a trolley by one spot on it: that spot follows your hand; pulling it sideways swings it round
+function dragVehicle(v, lx, lz, hp, dt) {
+  if (!v || S.driving === v || NET.remotes.some(r => r.driving === v)) return;
+  const q = vehPoint(v, lx, lz), dx = hp.x - q.x, dz = hp.z - q.z;
+  if (Math.hypot(dx, dz) < 0.02) return;
+  const k = Math.min(1, dt * 9), rx = q.x - v.x, rz = q.z - v.z;
+  const turn = -(rx * dz - rz * dx) / (rx * rx + rz * rz + 0.4) * k;   // pulled off to the side: it swings round
+  const nh = v.h + turn, nx = v.x + dx * k * 0.85, nz = v.z + dz * k * 0.85;
+  if (vehicleFits(v, nx, nz, nh)) { v.x = nx; v.z = nz; v.h = nh; }
+  else if (vehicleFits(v, nx, nz, v.h)) { v.x = nx; v.z = nz; }
+  else return;
+  for (const w of v.wheels) w.rotation.x += Math.hypot(dx, dz) * k * 6;
+  syncVehicle(v);
 }
 function letGo(g) {
   if (g.k === 'item') { const it = items[g.i]; if (it && it.state === 'grabbed') it.state = 'free'; }
