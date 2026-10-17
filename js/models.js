@@ -1,11 +1,12 @@
 // Custom characters made in Blender (models/passenger.glb). If the file loads, every passenger wears it,
 // colored with their own random skin/shirt/pants/shoes/hair; if it can't load (e.g. opened straight from
 // a file instead of a web server) they keep the built-in round look.
+// Also from Blender: curly hair (hair.glb), a backpack (backpack.glb), luggage (luggage.glb) and the trolley.
 //
 // The game still animates the built-in rig (now invisible, it's what you click on), and poseModel()
 // copies those joint angles onto the model's bones every frame.
 'use strict';
-const MODEL = { url: 'models/passenger.glb', proto: null, joints: null };
+const MODEL = { url: 'models/passenger.glb', proto: null, joints: null, curls: null, backpack: null };
 const normName = s => (s || '').toLowerCase().replace(/[^a-z]/g, '');
 // bone names we understand, for each joint of the game's rig (with l/r or left/right on the end)
 const JOINT_NAMES = {
@@ -75,6 +76,9 @@ function prepareModel(scene) {
   const T = torso.isEmpty() ? new THREE.Box3(new THREE.Vector3(-0.3, hip.y, hip.z - 0.3), new THREE.Vector3(0.3, neckY0, hip.z + 0.3)) : torso;
   MODEL.body = { cx: 0, cz: (T.min.z + T.max.z) / 2, r: (T.max.x - T.min.x) / 2, rz: (T.max.z - T.min.z) / 2,
     yMid: T.min.y + (T.max.y - T.min.y) * 0.55, yWaist: T.min.y + (T.max.y - T.min.y) * 0.2, yNeck: neckY0, neckR: 0.14, s: 1.15 };
+  // the model's own hair, so other hairdos can be lined up with it
+  MODEL.hairBox = new THREE.Box3();
+  scene.traverse(o => { if (o.isMesh && normName(o.material.name).startsWith('hair')) MODEL.hairBox.expandByObject(o); });
   // the head: everything above the neck joint
   const neck = joints.neck[0] && scene.getObjectByName(joints.neck[0].name), neckY = neck ? new THREE.Vector3().setFromMatrixPosition(neck.matrixWorld).y : box.max.y - 0.5;
   MODEL.head = new THREE.Box3();
@@ -106,14 +110,27 @@ function applyModel(p) {
   p.rig.core.add(m);
   p.model = { root: m, bones };
   if (p.pilot) pilotOutfit(p);
+  // some people get the curly hairdo instead
+  if (MODEL.curls && bones.neck[0] && ['afro', 'mohawk', 'bun'].includes(p.hairStyle)) {
+    m.traverse(o => { if (o.isMesh && normName(o.material.name).startsWith('hair')) o.visible = false; });
+    pinToBone(bones.neck[0], restClone(MODEL.curls, p.mats.hair.color), 0, 0, 0);
+  }
   // backpacks and friends ride on the body bone (the balloon is tied to the body already)
   const bodyBone = MODEL.joints.neck[0] && m.getObjectByName(MODEL.proto.getObjectByName(MODEL.joints.neck[0].name).parent.name);
   if (bodyBone && p.acc && p.acc.length) {
     const accRoot = new THREE.Group();
     pinToBone(bodyBone, accRoot, 0, 0, 0);
-    buildAccessories(accRoot, p.acc.filter(a => a !== 'balloon'), MODEL.body, p.accCol);
+    const own = MODEL.backpack && p.acc.includes('backpack');   // the Blender backpack
+    if (own) accRoot.add(restClone(MODEL.backpack, p.accCol));
+    buildAccessories(accRoot, p.acc.filter(a => a !== 'balloon' && !(own && a === 'backpack')), MODEL.body, p.accCol);
   }
   poseModel(p);
+}
+// a copy of something modelled in place on the character (its rest pose), with its colour parts tinted
+function restClone(proto, color) {
+  const c = proto.clone();
+  c.traverse(o => { if (o.isMesh && o.userData.tint && color) { o.material = o.material.clone(); o.material.color.copy(color); } });
+  return c;
 }
 // pin something onto a bone, given where it should sit on the model in its rest pose
 function pinToBone(bone, obj, x, y, z) {
@@ -182,18 +199,101 @@ function poseModel(p) {
   }
 }
 
-if (THREE.GLTFLoader && THREE.SkeletonUtils) {
-  new THREE.GLTFLoader().load(MODEL.url, gltf => {
+// ---------------------------------------------------------------- loading
+const loadGLB = url => new Promise(ok => new THREE.GLTFLoader().load(url, g => ok(g.scene), undefined, () => ok(null)));
+// the parts of a material that take a colour: anything called "... color" (but not straps)
+const tintable = m => /colou?r|^bag/.test(normName(m.name)) && !/strap/.test(normName(m.name));
+// pull the meshes out of a file, keeping where they were modelled; tag the tintable ones
+function grabMeshes(scene, test) {
+  scene.updateMatrixWorld(true);
+  const g = new THREE.Group();
+  scene.traverse(o => {
+    if (!o.isMesh || o.isSkinnedMesh || !test(o)) return;
+    const c = o.clone(); c.matrixAutoUpdate = true;
+    o.matrixWorld.decompose(c.position, c.quaternion, c.scale);
+    c.userData.tint = tintable(o.material);
+    g.add(c);
+  });
+  return g.children.length ? g : null;
+}
+// the curly hair: if it was modelled off to the side (or floating), sit it on the head where the model's own hair is
+function fitCurls(g) {
+  const nb = new THREE.Box3().setFromObject(g), old = MODEL.hairBox;
+  if (old.isEmpty()) return g;
+  const nc = nb.getCenter(new THREE.Vector3()), oc = old.getCenter(new THREE.Vector3());
+  const inPlace = Math.abs(nc.x - oc.x) < 0.15 && nb.min.y < old.max.y - 0.1;
+  if (!inPlace) for (const o of g.children) o.position.add(new THREE.Vector3(oc.x - nc.x, old.min.y + 0.07 - nb.min.y, oc.z - 0.045 - nc.z));
+  for (const o of g.children) o.userData.tint = true;   // it takes each person's hair colour
+  return g;
+}
+// luggage: one file, several bags. Each is recognised by its name or its material
+const LUGGAGE = {};
+const BAG_KEYS = [['backpack', /backpack/], ['briefcase', /briefcase/], ['suitcase', /suitcase/]];
+function prepareLuggage(scene) {
+  scene.updateMatrixWorld(true);
+  const found = [];
+  scene.traverse(o => { if (o.isMesh && !found.some(f => f.node === (o.parent === scene ? o : o.parent))) found.push({ node: o.parent === scene ? o : o.parent }); });
+  for (const { node } of found) {
+    const names = [normName(node.name)];
+    node.traverse(o => { if (o.isMesh) names.push(normName(o.material.name)); });
+    const key = (BAG_KEYS.find(([, re]) => names.some(n => re.test(n))) || [])[0];
+    if (!key || LUGGAGE[key]) continue;
+    const g = grabMeshes(node, () => true);
+    // sit it on the ground, centred
+    const bb = new THREE.Box3().setFromObject(g), c = bb.getCenter(new THREE.Vector3());
+    for (const o of g.children) o.position.sub(new THREE.Vector3(c.x, bb.min.y, c.z));
+    const size = bb.getSize(new THREE.Vector3());
+    g.userData.h = size.y; g.userData.r = clamp(Math.max(size.x, size.z) * 0.35, 0.2, 0.55);
+    LUGGAGE[key] = g;
+  }
+  items.forEach(reskinBag);
+}
+function reskinBag(it) {
+  const proto = LUGGAGE[it.type.model];
+  if (!proto || it.reskinned) return;
+  const g = it.g, tint = g.userData.tint;
+  for (const o of [...g.children]) { g.remove(o); o.traverse(m => { const i = targets.indexOf(m); if (i >= 0) targets.splice(i, 1); }); }
+  const m = restClone(proto, tint);
+  m.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
+  g.add(m);
+  it.h = proto.userData.h; it.r = proto.userData.r; it.reskinned = true;
+}
+// the luggage trolley: scaled to fit the game, its colour parts painted, and swapped in for the stand-in boxes
+function prepareTrolley(scene) {
+  const v = trolley, s = TROLLEY.scale;
+  scene.scale.setScalar(s);
+  scene.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(scene), c = bb.getCenter(new THREE.Vector3());
+  scene.position.set(-c.x, GROUND - bb.min.y, -c.z);
+  const wheels = [];
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    if (/cylinder|wheel/.test(normName(o.name))) { o.material = M.dark; wheels.push(o); }
+    else if (tintable(o.material) || !o.material.name) o.material = TROLLEY.color;
+  });
+  v.g.add(scene);
+  v.standIn.visible = false;
+  if (wheels.length) v.wheels = wheels;
+}
+
+// (started once every script has run, since a quick download could otherwise land before net.js exists)
+if (THREE.GLTFLoader && THREE.SkeletonUtils) window.addEventListener('DOMContentLoaded', () => {
+  loadGLB(TROLLEY.url).then(s => { if (s) try { prepareTrolley(s); } catch (e) { console.warn('Trolley model failed:', e); } });
+  loadGLB('models/luggage.glb').then(s => { if (s) try { prepareLuggage(s); } catch (e) { console.warn('Luggage models failed:', e); } });
+  Promise.all([MODEL.url, 'models/hair.glb', 'models/backpack.glb'].map(loadGLB)).then(([scene, hair, pack]) => {
+    if (!scene) return console.info('No custom passenger model (needs a web server); using the built-in people.');
     try {
-      const scene = gltf.scene;
       // drop stray empties that came along from the Blender file
       for (const o of [...scene.children]) if (!o.children.length && !o.isMesh && !o.isBone) scene.remove(o);
       MODEL.joints = prepareModel(scene);
       MODEL.proto = scene;
+      const curls = hair && grabMeshes(hair, () => true);
+      if (curls) MODEL.curls = fitCurls(curls);
+      if (pack) MODEL.backpack = grabMeshes(pack, o => /back ?pack|bag/.test(o.material.name.toLowerCase()));
       passengers.forEach(applyModel);
       // other players (anyone already in the room)
       for (const id in avatars) applyModel(avatars[id]);
       NET.remotes.forEach(r => applyModel(r.avatar));
     } catch (e) { console.warn('Custom passenger model failed, using the built-in people:', e); }
-  }, undefined, () => console.info('No custom passenger model (needs a web server); using the built-in people.'));
-}
+  });
+});

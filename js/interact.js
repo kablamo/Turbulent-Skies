@@ -38,7 +38,7 @@ function actionFor(ud, who = LOCAL) {
     if (s.p || s.player) return { type: 'info', label: 'Someone is already sitting there.' };
     return { key: 'vseat', type: 'press', ready: true, local: true, label: `Sit down in the ${v.name}`, done: () => sitInVehicle(v, s) };
   }
-  if (ud.drive) return S.phase === 'airport' ? { key: 'drive', type: 'press', ready: true, label: `Sit down and drive the ${ud.drive.name}`, done: () => enterVehicle(ud.drive, who) } : null;
+  if (ud.drive) return S.phase === 'airport' ? { key: 'drive', type: 'press', ready: true, label: ud.drive.push ? `Grab the ${ud.drive.name} and push it` : `Sit down and drive the ${ud.drive.name}`, done: () => enterVehicle(ud.drive, who) } : null;
   if (ud.item) {
     const it = ud.item;
     if (it.state === 'gone' || it.state === 'queue' || it.state === 'held') return null;
@@ -130,7 +130,9 @@ function interact(dt) {
     else if (S.drop && S.driving.kind === 'bus') toggleBusDoor(S.driving);
     S.press = S.drop = S.act = false;
     if (!S.driving) return;
-    const v = S.driving, extra = v.kind === 'truck' ? ` · ${v.slots.filter(s => s.item).length}/12 bags` : ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
+    const v = S.driving;
+    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.slots.filter(s => s.item).length} bags on board`, true); return; }
+    const extra = ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
     setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>E</kbd>get up${extra}`, true);
     return;
   }
@@ -310,14 +312,14 @@ function helpHTML() {
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying</td></tr>
       <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
       <tr><td>Mash ${k_('Space')}</td><td>Wriggle free when someone's carrying you</td></tr>
-      <tr><th colspan="2">Driving the bus or truck</th></tr>
-      <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Gas and reverse</td></tr>
+      <tr><th colspan="2">Driving the bus · pushing the luggage trolley</th></tr>
+      <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Gas and reverse (push and pull the trolley)</td></tr>
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer</td></tr>
       <tr><td>${k_('F')}</td><td>Board or unload passengers (bus)</td></tr>
       <tr><td>${k_('Q')}</td><td>Open or close the bus door</td></tr>
       <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
-      <tr><td>${k_('E')}</td><td>Get up</td></tr>
-      <tr><td>${k_('E')} on a seat</td><td>Ride along while someone else drives (or jump onto the truck bed)</td></tr>
+      <tr><td>${k_('E')}</td><td>Get up (let go of the trolley)</td></tr>
+      <tr><td>${k_('E')} on a seat</td><td>Ride along while someone else drives (or jump onto the trolley)</td></tr>
       <tr><th colspan="2">Flying (captain's seat)</th></tr>
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer (and line up with the runway)</td></tr>
       <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Climb and dive (hold W to take off)</td></tr>

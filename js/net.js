@@ -99,7 +99,7 @@ function poseAvatar(a, d, dt) {
   }
   const moved = Math.hypot(d.x - a.g.position.x, d.z - a.g.position.z);
   a.walkT += moved > 0.01 ? dt * 1.2 : 0;
-  a.pose = d.seat ? 'sit' : moved > 0.01 ? 'walk' : 'stand';
+  a.pose = d.seat ? 'sit' : d.push ? 'push' : moved > 0.01 ? 'walk' : 'stand';
   lerpTo(a.g.position, d.x, d.y, d.z, dt);
   a.g.rotation.set(0, d.yaw, 0);
   // thrown: tumbling through the air
@@ -193,12 +193,12 @@ function netShoveBags(dt) {
   }
 }
 function heldRef(o) { return !o ? null : o.kind === 'pax' ? ['pax', passengers.indexOf(o)] : ['item', items.indexOf(o)]; }
-// where each player's body should be drawn (sitting at the wheel / in the cockpit when driving / flying)
+// where each player's body should be drawn (sitting at the wheel / in the cockpit when driving / flying, or walking behind the trolley)
 function playerPose(who) {
   const v = who.isLocal ? S.driving : who.driving, flying = who.isLocal ? S.flying : S.pilotRP === who;
   const extra = { pitch: who.pose.pitch || 0, cb: who.carriedBy ? idOf(who.carriedBy) : null, cy: who.carryP ? idOf(who.carryP) : null,
     air: who.isLocal ? !!P.launched : !!who.air };
-  if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z + 0.0, yaw: v.h, seat: true, ...extra }; }
+  if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z, yaw: v.h, seat: !v.push, push: !!v.push, ...extra }; }
   if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
   const yaw = who.carriedBy ? who.carriedBy.pose.yaw : who.pose.yaw;
   // sitting in a vehicle seat (your own y is lowered for the camera; report the floor)
@@ -210,7 +210,7 @@ function buildSnap() {
   const segBits = segments.map(sg => (sg.sides.L.open ? 1 : 0) | (sg.sides.L.patched ? 2 : 0) | (sg.sides.R.open ? 4 : 0) | (sg.sides.R.patched ? 8 : 0));
   const players = [LOCAL, ...NET.remotes].map(w => {
     const p = playerPose(w);
-    return { id: idOf(w), name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), seat: p.seat, cb: p.cb, cy: p.cy, air: p.air,
+    return { id: idOf(w), name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), seat: p.seat, push: p.push, cb: p.cb, cy: p.cy, air: p.air,
       drv: vehicles.indexOf(w.isLocal ? S.driving : w.driving), fly: w.isLocal ? S.flying : S.pilotRP === w, held: heldRef(w.held) };
   });
   return {

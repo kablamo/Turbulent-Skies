@@ -5,7 +5,8 @@
 const vehicles = [];
 function vehPoint(v, lx, lz) { const c = Math.cos(v.h), s = Math.sin(v.h); return { x: v.x + lx * c + lz * s, z: v.z - lx * s + lz * c }; }
 function vehLocal(v, x, z) { const dx = x - v.x, dz = z - v.z, c = Math.cos(v.h), s = Math.sin(v.h); return { x: dx * c - dz * s, z: dx * s + dz * c }; }
-const BED_TOP = GROUND + 0.83, VFLOOR = GROUND + 0.4;
+const VFLOOR = GROUND + 0.4;
+const TROLLEY = { url: 'models/trolley.glb', scale: 0.55, color: std(0xffc21a, { roughness: .45, metalness: .3 }) };
 
 function steeringWheel(v, g, x, y, z) {
   const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 20), M.dark);
@@ -25,34 +26,26 @@ function makeVehicle(kind, x, z) {
   const g = new THREE.Group(); airport.add(g);
   const v = { kind, g, x, z, h: 0, v: 0, slots: [], seats: [], wheels: [], floor: VFLOOR };
   const wheel = (wx, wz, r) => { const w = cyl(r, r, 0.3, M.dark, wx, GROUND + r, wz, g); w.rotation.z = Math.PI / 2; v.wheels.push(w); };
-  if (kind === 'truck') {
-    // a baggage tug: a small walk-in cab up front, a flat bed behind
-    const yel = M.yellow, glass = std(0x2a3a4a, { transparent: true, opacity: .35, roughness: .1, metalness: .5 });
-    Object.assign(v, { name: 'baggage truck', w: 1.0, l: 2.4, max: 9,
-      eye: { x: 0.3, y: VFLOOR + 1.2, z: -1.15 }, stand: { x: -0.3, z: -1.6 },
-      zones: [[-0.8, 0.8, -2.2, -0.9], [-1.15, -0.75, -2.1, -1.0], [-1.05, 1.05, -0.7, 2.5, 'bed']],   // jump up onto the bed to ride on the back
-      solidTop: l => l.z > -0.75 ? BED_TOP : GROUND + 2.5 });
-    box(2.0, 0.3, 4.8, M.dark, 0, GROUND + 0.25, 0, g);
-    box(1.9, 0.05, 1.6, M.panel, 0, VFLOOR, -1.55, g);                    // cab floor
-    box(2.0, 0.1, 1.7, yel, 0, GROUND + 2.45, -1.55, g);                    // roof
-    box(1.9, 0.9, 0.08, yel, 0, VFLOOR + 0.45, -2.36, g);                   // front, below the windshield
-    box(1.9, 1.15, 0.04, glass, 0, VFLOOR + 1.47, -2.36, g);                // windshield
-    box(1.9, 2.05, 0.08, yel, 0, VFLOOR + 1.02, -0.75, g);                  // back wall
-    box(0.08, 1.0, 1.6, yel, 0.95, VFLOOR + 0.5, -1.55, g);                 // right wall + window
-    box(0.04, 1.0, 1.5, glass, 0.95, VFLOOR + 1.5, -1.55, g);
-    for (const pz of [-2.32, -0.79]) box(0.08, 2.05, 0.08, yel, -0.95, VFLOOR + 1.02, pz, g);   // left doorway pillars
-    box(0.3, 0.06, 0.6, M.steel, -1.15, GROUND + 0.22, -1.55, g);         // step
-    box(1.9, 0.3, 0.3, M.panel, 0, VFLOOR + 0.85, -2.15, g);                // dashboard
-    driverSeat(g, 0.3, -1.15, M.dark);
-    driverSeat(g, -0.4, -1.15, M.seat);                                    // passenger seat
-    v.seats.push({ x: -0.4, z: -1.15, p: null });
-    steeringWheel(v, g, 0.3, VFLOOR + 1.05, -1.75);
-    box(0.3, 0.15, 0.3, std(0xff8800, { emissive: 0x663300 }), 0, GROUND + 2.58, -1.55, g);
-    box(2.0, 0.1, 2.9, M.wood, 0, GROUND + 0.78, 0.85, g);                  // bed
-    for (const s of [-1, 1]) box(0.06, 0.25, 2.9, yel, s * 0.98, GROUND + 0.95, 0.85, g);
-    box(2.0, 0.25, 0.06, yel, 0, GROUND + 0.95, 2.28, g);
-    for (const [wx, wz] of [[-1, -1.6], [1, -1.6], [-1, 1.6], [1, 1.6]]) wheel(wx, wz, 0.35);
-    for (const lz of [-0.1, 0.55, 1.2, 1.85]) for (const lx of [-0.6, 0, 0.6]) v.slots.push({ x: lx, z: lz, item: null });
+  if (kind === 'trolley') {
+    // a luggage trolley you push by hand: a low flat bed with a handle frame at the back (+z).
+    // These sizes match models/trolley.glb at TROLLEY.scale; the boxes below are only a stand-in until it loads.
+    Object.assign(v, { name: 'luggage trolley', w: 0.58, l: 1.1, max: 5.5, floor: GROUND, bedTop: GROUND + 0.29, push: true,
+      eye: { x: 0, y: GROUND + EYE, z: 1.55 }, stand: { x: 0, z: 1.6 }, tail: 0.6,   // you walk along behind the handle
+      zones: [[-0.55, 0.55, -1.1, 0.68, 'bed']],                              // hop onto the bed to ride along
+      bed: { x0: -0.55, x1: 0.55, z0: -1.05, z1: 0.7 },
+      solidTop: l => l.z > 0.68 ? GROUND + 1.25 : v.bedTop });
+    const col = TROLLEY.color, stand = new THREE.Group(); g.add(stand); v.standIn = stand;
+    box(1.15, 0.08, 1.8, col, 0, GROUND + 0.25, -0.2, stand);
+    for (const s of [-1, 1]) box(0.05, 0.08, 1.8, col, s * 0.55, GROUND + 0.32, -0.2, stand);
+    for (const s of [-1, 1]) box(0.08, 1.0, 0.08, col, s * 0.52, GROUND + 0.75, 0.9, stand);
+    box(1.12, 0.08, 0.08, col, 0, GROUND + 1.22, 0.9, stand);
+    box(1.12, 0.06, 0.06, col, 0, GROUND + 0.75, 0.9, stand);
+    for (const [wx, wz] of [[-0.5, -0.85], [0.5, -0.85], [-0.5, 0.6], [0.5, 0.6]]) { const w = cyl(0.1, 0.1, 0.08, M.dark, wx, GROUND + 0.1, wz, stand); w.rotation.z = Math.PI / 2; v.wheels.push(w); }
+    // grab the handle (E) to push it
+    const hit = box(1.2, 0.5, 0.5, M.hit, 0, GROUND + 1.05, 0.95, g);
+    hit.userData.drive = v; targets.push(hit);
+    // bags pile up in four stacks on the bed, three high
+    for (const lz of [-0.55, 0.25]) for (const lx of [-0.27, 0.27]) for (let k = 0; k < 3; k++) v.slots.push({ x: lx, z: lz, k, item: null });
   } else {
     // the shuttle bus: door at the front right, driver front left, a row of seats either side of the aisle
     const white = std(0xf4f4f0, { roughness: .4 }), glass = std(0x223344, { transparent: true, opacity: .4, roughness: .1 });
@@ -109,7 +102,7 @@ function makeVehicle(kind, x, z) {
   return v;
 }
 function syncVehicle(v) { v.g.position.set(v.x, 0, v.z); v.g.rotation.y = v.h; }
-const truck = makeVehicle('truck', 5, 76);
+const trolley = makeVehicle('trolley', 5, 76);
 const bus = makeVehicle('bus', -7, 76);
 function toggleBusDoor(v) { v.door.target = v.door.target ? 0 : 1; beep(v.door.target ? 520 : 380, .25, 'triangle', .06); }
 const busDoorOpen = () => bus.door.open > 0.9;
@@ -130,7 +123,7 @@ function inVehicle(v, x, z, pad = 0) { const l = vehLocal(v, x, z); return Math.
 function vehicleFits(v, x, z, h) {
   const probe = { x, z, h, w: v.w, l: v.l };
   for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
-    const p = vehPoint(probe, a * v.w, b * v.l);
+    const p = vehPoint(probe, a * v.w, b > 0 ? v.l + (v.tail || 0) : b * v.l);   // (the trolley's tail is you, walking behind it)
     if (!vehicleSpotOK(p.x, p.z)) return false;
     for (const o of vehicles) if (o !== v && inVehicle(o, p.x, p.z)) return false;
   }
@@ -146,6 +139,7 @@ function enterVehicle(v, who = LOCAL) {
   if (!who.isLocal) { who.driving = v; v.v = 0; return; }
   S.driving = v; v.v = 0; S.chase = false;
   P.yaw = v.h; P.pitch = -0.08;
+  if (v.push) { say(`You grab the ${v.name}. W/S push · A/D turn · C camera · E let go`); beep(320, .12, 'triangle', .05); return; }
   say(`You take the wheel of the ${v.name}. W/S drive · A/D steer · ${v.kind === 'bus' ? 'F board / unload passengers · Q door · ' : ''}C camera · E get up`);
   beep(200, .3, 'sawtooth', .05);
 }
@@ -161,7 +155,7 @@ function driveVehicle(v, dt, k = keys) {
   const steer = (k.a || k.arrowleft ? 1 : 0) - (k.d || k.arrowright ? 1 : 0);
   if (thr) v.v += thr * (thr * v.v < 0 ? 14 : 5) * dt; else v.v *= Math.max(0, 1 - 1.8 * dt);
   v.v = clamp(v.v, -3.5, v.max);
-  const nh = v.h + steer * 0.9 * dt * clamp(v.v / 3, -1, 1);
+  const nh = v.h + steer * dt * (v.push ? 1.5 : 0.9 * clamp(v.v / 3, -1, 1));   // a trolley turns on the spot
   if (vehicleFits(v, v.x, v.z, nh)) { if (v === S.driving) P.yaw += nh - v.h; v.h = nh; }   // your view turns with the vehicle
   const nx = v.x - Math.sin(v.h) * v.v * dt, nz = v.z - Math.cos(v.h) * v.v * dt;
   if (vehicleFits(v, nx, nz, v.h)) { v.x = nx; v.z = nz; }
@@ -169,8 +163,23 @@ function driveVehicle(v, dt, k = keys) {
   for (const w of v.wheels) w.rotation.x += v.v * dt * 2.5;
   syncVehicle(v);
 }
+// how high a bag sits on the trolley: on the bed, or on top of the bags under it in the same stack
+function slotY(v, slot) {
+  let y = v.bedTop;
+  for (const s of v.slots) if (s.x === slot.x && s.z === slot.z && s.k < slot.k && s.item) y += s.item.h;
+  return y;
+}
+// the next free spot: the lowest stack first, and never piled above head height
+function freeTrolleySlot(v) {
+  let best = null, by = 1e9;
+  for (const s of v.slots) {
+    if (s.item) continue;
+    const y = slotY(v, s);
+    if (y < by && y < v.bedTop + 1.3) { best = s; by = y; }
+  }
+  return best;
+}
 function busDoor(v, out = 0.5) { return vehPoint(v, v.w + out, -3.1); }
-// F while driving: board or unload passengers (bus), or toss bags into the plane (truck)
 // sitting in a vehicle as a passenger (only on your own screen; others see you sit)
 function sitInVehicle(v, s) {
   if (s.p || s.player) return;
@@ -197,11 +206,11 @@ function rideVehicles() {
   }
 }
 function vehicleAction(v) {
-  if (v.kind === 'truck') {
-    // no automatic unloading: park near the cargo ramp, hop out, and carry the bags in yourself
+  if (v.push) {
+    // no automatic unloading: push it to the cargo ramp, let go, and carry the bags in yourself
     const bags = v.slots.filter(s => s.item).length;
-    if (!bags) return say('The truck bed is empty. Park the bed at the end of the terminal conveyor to pick up bags.');
-    return say(`${bags} bag${bags > 1 ? 's' : ''} on the truck. Park by the cargo ramp, get out (E), and carry them up the ramp into the cargo bay.`);
+    if (!bags) return say('The trolley is empty. Push it to the end of the terminal conveyor to pick up bags.');
+    return say(`${bags} bag${bags > 1 ? 's' : ''} on the trolley. Push it to the cargo ramp, let go (E), and carry them up the ramp into the cargo bay.`);
   }
   const door = busDoor(v);
   const atTerminal = Math.hypot(door.x - TERM_DOOR.x, door.z - TERM_DOOR.z) < 10, atPlane = nearRamp(door.x, door.z, 13);

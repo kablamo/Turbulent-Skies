@@ -39,7 +39,7 @@ function surfaceY(x, z) {
   if (inThreshold(x, z) || onWing(x, z)) return 0;
   if (onRamp(x, z)) return -Math.max(0, z - REAR) * RAMP_SLOPE;
   if (S.phase === 'airport' && inAirport(x, z)) {
-    for (const v of vehicles) { const zone = vehicleZoneAt(v, x, z); if (zone) return zone[4] === 'bed' ? BED_TOP : v.floor; }
+    for (const v of vehicles) { const zone = vehicleZoneAt(v, x, z); if (zone) return zone[4] === 'bed' ? v.bedTop : v.floor; }
     return GROUND;
   }
   return null;
@@ -115,7 +115,7 @@ function cabinForces(b, out) {
 }
 
 function areaName(x, z) {
-  if (S.driving) return 'Driving the ' + S.driving.name;
+  if (S.driving) return (S.driving.push ? 'Pushing the ' : 'Driving the ') + S.driving.name;
   if (S.phase === 'airport') for (const v of vehicles) if (vehicleZoneAt(v, x, z)) return 'Inside the ' + v.name;
   if (S.phase === 'airport' && !insideHull(x, z) && !onWing(x, z) && !onRamp(x, z)) return inTerminal(x, z) ? 'Terminal · Gate 404' : 'Airport apron';
   if (Math.abs(x) > W) return x < 0 ? 'Left wing' : 'Right wing';

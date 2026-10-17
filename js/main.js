@@ -356,11 +356,11 @@ function setBar(el, v) {
 function boardingCard() {
   const b = boarding();
   const inTerm = passengers.filter(p => p.state === 'terminal').length, onBus = passengers.filter(p => p.state === 'bus').length;
-  const onBelt = items.filter(i => i.state === 'belt' || i.state === 'queue').length, onTruck = truck.slots.filter(s => s.item).length;
+  const onBelt = items.filter(i => i.state === 'belt' || i.state === 'queue').length, onTrolley = trolley.slots.filter(s => s.item).length;
   const row = (ok, text, loc) => `<div class="st ${ok ? 'done' : 'cur'}">${ok ? '✓' : '▶'} ${text}${!ok && loc ? `<span class="loc">📍 ${loc}</span>` : ''}</div>`;
   return `<div class="card board"><div class="ct">🛫 BOARDING · FLIGHT 404</div>
     ${row(b.seated === b.pax, `Passengers seated: ${b.seated}/${b.pax}`, `${inTerm} in the terminal · ${onBus} on the bus. Park the bus at the terminal doors and press F, then press F again at the cargo ramp.`)}
-    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTruck} on the truck. Park the truck bed at the end of the belt, drive to the cargo ramp, then carry each bag in by hand (E).`)}
+    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTrolley} on the trolley. Push the luggage trolley to the end of the belt, then to the cargo ramp, and carry each bag in by hand (E).`)}
     ${row(b.rampUp, 'Raise the cargo ramp', 'Cargo bay · yellow panel')}
     ${row(b.doorsShut, 'Exit doors closed', 'Exit row')}
     ${row(false, 'Take off from the captain\'s seat', 'Cockpit · yoke')}</div>`;
@@ -486,7 +486,7 @@ function boardAll() {
   items.forEach((it, i) => { if (it.state !== 'gone') { freeSlot(it); it.g.visible = true; it.state = 'free'; it.x = -2.4 + (i % 4) * 0.9; it.z = 7.4 + Math.floor(i / 4) * 1.1; it.y = 0; it.vx = it.vz = it.vy = 0; } });
   ramp.target = 0;
 }
-window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, truck, bus };
+window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolley, bus };
 
 let last = performance.now();
 function frame(now) {

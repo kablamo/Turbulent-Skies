@@ -9,7 +9,16 @@ function sph(r, m, x, y, z, parent, scale) {
 // ---------------------------------------------------------------- cargo
 // Each type builds its model into g (facing -z). `alive` cargo wanders about on its own once it's loose.
 const BAGS = {
-  suitcase: { name: 'suitcase', r: 0.32, build: g => { box(0.45, 0.6, 0.25, mat(new THREE.Color().setHSL(Math.random(), .6, .45)), 0, 0.3, 0, g); box(0.2, 0.06, 0.04, M.dark, 0, 0.63, 0, g); for (const s of [-1, 1]) box(0.47, 0.04, 0.27, mat(0xffcc33), 0, 0.3 + s * 0.15, 0, g); } },
+  // suitcase, backpack and briefcase swap to the Blender ones in models/luggage.glb once it loads (models.js), keeping their colour
+  suitcase: { name: 'suitcase', r: 0.32, model: 'suitcase', build: g => { const c = mat(new THREE.Color().setHSL(Math.random(), .6, .45)); g.userData.tint = c.color; box(0.45, 0.6, 0.25, c, 0, 0.3, 0, g); box(0.2, 0.06, 0.04, M.dark, 0, 0.63, 0, g); for (const s of [-1, 1]) box(0.47, 0.04, 0.27, mat(0xffcc33), 0, 0.3 + s * 0.15, 0, g); } },
+  backpack: { name: 'backpack', r: 0.3, model: 'backpack', build: g => {
+    const c = mat(new THREE.Color().setHSL(Math.random(), .65, .45)); g.userData.tint = c.color;
+    box(0.45, 0.3, 0.7, c, 0, 0.15, 0, g); box(0.34, 0.1, 0.3, mat(c.color.clone().multiplyScalar(0.6)), 0, 0.33, 0.12, g);
+  } },
+  briefcase: { name: 'briefcase', r: 0.3, model: 'briefcase', build: g => {
+    const c = mat(pick([0x5a3a22, 0x222222, 0x8a5a2b, 0xb03030, 0x2f4f8f])); g.userData.tint = c.color;
+    box(0.6, 0.16, 0.62, c, 0, 0.08, 0, g); box(0.2, 0.05, 0.04, M.dark, 0, 0.18, -0.25, g);
+  } },
   duck: { name: 'giant rubber duck', r: 0.42, build: g => {
     const y = mat(0xffd21a, { roughness: .3 });
     sph(0.38, y, 0, 0.36, 0.05, g, [1, 0.8, 1.2]); sph(0.22, y, 0, 0.78, -0.2, g);
@@ -84,15 +93,16 @@ const BAGS = {
   } },
   egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
 };
+const bagHeight = g => { g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(g); return b.isEmpty() ? 0.4 : b.max.y; };
 // the luggage for this flight
-const MANIFEST = ['suitcase', 'croc', 'duck', 'chicken', 'gnome', 'tuba', 'cactus', 'toilet', 'moose', 'fishtank'];
-// bag states: queue (waiting inside the terminal) → belt → ride (on the truck) → free (physics) / held / gone
+const MANIFEST = ['suitcase', 'croc', 'backpack', 'duck', 'chicken', 'gnome', 'briefcase', 'tuba', 'cactus', 'toilet', 'moose', 'fishtank'];
+// bag states: queue (waiting inside the terminal) → belt → ride (on the trolley) → free (physics) / held / gone
 const items = [];
 function spawnBag(type) {
-  const g = new THREE.Group(); plane.add(g); g.visible = false;
-  type.build(g);
+  const g = new THREE.Group();
+  type.build(g); plane.add(g); g.visible = false;
   const it = { kind: 'bag', type, name: type.name, alive: type.alive, extra: type.extra, g, x: BELT_X, y: BELT_Y, z: BELT_START, vx: 0, vy: 0, vz: 0, r: type.r,
-    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10) };
+    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), h: bagHeight(g) };
   g.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
   items.push(it);
   return it;
@@ -190,7 +200,7 @@ function makePassenger(name) {
   const p = { kind: 'pax', name, g, rig, sprite, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 0.3, spin: { x: 0, z: 0 }, phase: rand(0, 10), pose: 'stand', mood: 70,
     state: 'terminal', seat: null, path: [], then: null, next: null, waitT: 0, downT: 0, off: rand(-22, 18), face: '', calling: null, angry: 0, walkT: 0, tx: 0, tz: 0, wanderT: 0, busSeat: null, bubble: null, bubbleT: 0 };
   p.mats = { skin, shirt, pants, shoes, hair: hairMat };   // a custom Blender model (models.js) borrows these colors
-  p.acc = acc; p.accCol = accCol;
+  p.acc = acc; p.accCol = accCol; p.hairStyle = style;
   g.traverse(o => { if (o.isMesh) { o.userData.passenger = p; targets.push(o); } });
   return p;
 }
@@ -254,6 +264,12 @@ function animatePax(p) {
       const s = Math.sin(p.walkT * 8);
       th = [s * 0.55, -s * 0.55]; sh = [-Math.max(0, s) * 0.7, -Math.max(0, -s) * 0.7]; ar = [-s * 0.6, s * 0.6]; fo = [0.4, 0.4]; az = [0.2, 0.2];
       hy += Math.abs(s) * 0.04;                                           // a bouncy waddle
+      break;
+    }
+    case 'push': {
+      // both hands forward on the trolley handle, legs walking
+      const s = Math.sin(p.walkT * 8);
+      th = [s * 0.45, -s * 0.45]; sh = [-Math.max(0, s) * 0.6, -Math.max(0, -s) * 0.6]; ar = [1.25, 1.25]; fo = [0.35, 0.35]; az = [0.05, 0.05];
       break;
     }
     case 'flail':
@@ -394,11 +410,11 @@ function updateConveyor(dt) {
     it.x = BELT_X; it.y = BELT_Y;
     it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
   }
-  // drop the front bag onto the truck when its bed is parked at the end of the belt
+  // drop the front bag onto the trolley when it's parked at the end of the belt
   S.beltLoadT -= dt;
-  const front = onBelt[0], bed = vehPoint(truck, 0, 0.85);
-  if (front && front.z <= BELT_END + 0.05 && S.beltLoadT <= 0 && Math.abs(truck.v) < 0.4 && Math.hypot(bed.x - BELT_X, bed.z - (BELT_END - 1.4)) < 2.6) {
-    const slot = truck.slots.find(s => !s.item);
+  const front = onBelt[0], bed = vehPoint(trolley, 0, -0.15);
+  if (front && front.z <= BELT_END + 0.05 && S.beltLoadT <= 0 && Math.abs(trolley.v) < 0.4 && Math.hypot(bed.x - BELT_X, bed.z - (BELT_END - 1.2)) < 2.2) {
+    const slot = freeTrolleySlot(trolley);
     if (slot) { slot.item = front; front.slot = slot; front.state = 'ride'; S.beltLoadT = 0.5; beep(380, .08, 'triangle', .05); }
   }
 }
@@ -406,17 +422,18 @@ function updateItems(dt) {
   if (S.phase === 'airport') updateConveyor(dt);
   for (const it of items) {
     if (it.state === 'ride') {
-      const p = vehPoint(truck, it.slot.x, it.slot.z);
-      it.x = p.x; it.z = p.z; it.y = BED_TOP;
-      it.g.position.set(p.x, BED_TOP, p.z); it.g.rotation.set(0, truck.h + it.spinY * 0.1, 0);
+      const p = vehPoint(trolley, it.slot.x, it.slot.z);
+      // settle down onto whatever's below (it drops when a bag under it is taken)
+      it.y = Math.max(slotY(trolley, it.slot), it.y - 4 * dt); it.x = p.x; it.z = p.z;
+      it.g.position.set(p.x, it.y, p.z); it.g.rotation.set(0, trolley.h + it.spinY * 0.1, 0);
       continue;
     }
     if (it.state !== 'free') continue;
-    // a bag thrown onto the truck bed stays there
-    if (S.phase === 'airport' && it.vy <= 0 && it.y < BED_TOP + 0.25 && it.y > BED_TOP - 0.4) {
-      const l = vehLocal(truck, it.x, it.z);
-      const slot = Math.abs(l.x) < 1.0 && l.z > -0.6 && l.z < 2.3 && truck.slots.find(s => !s.item);
-      if (slot) { slot.item = it; it.slot = slot; it.state = 'ride'; continue; }
+    // a bag thrown onto the trolley lands on the pile
+    if (S.phase === 'airport' && it.vy <= 0 && it.y < trolley.bedTop + 1.4 && it.y > trolley.bedTop - 0.2) {
+      const l = vehLocal(trolley, it.x, it.z), b = trolley.bed;
+      const slot = l.x > b.x0 - 0.15 && l.x < b.x1 + 0.15 && l.z > b.z0 - 0.15 && l.z < b.z1 + 0.1 && freeTrolleySlot(trolley);
+      if (slot && it.y < slotY(trolley, slot) + 0.3) { slot.item = it; it.slot = slot; it.state = 'ride'; continue; }
     }
     cabinForces(it, force);
     it.vx += force.x * dt; it.vz += force.z * dt;

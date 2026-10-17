@@ -91,7 +91,7 @@ setInterval(() => {
   tbtn(' ').style.display = walking ? '' : 'none';
   tbtn(' ').querySelector('small').textContent = carriedByName() ? 'wriggle' : 'jump';
   tbtn('q').querySelector('small').textContent = S.driving ? 'door' : 'put down';
-  tbtn('e').querySelector('small').textContent = S.driving || S.flying ? 'get up' : S.held || carrying ? 'throw' : 'use';
+  tbtn('e').querySelector('small').textContent = S.driving && S.driving.push ? 'let go' : S.driving || S.flying ? 'get up' : S.held || carrying ? 'throw' : 'use';
 }, 150);
 
 // try for a full screen game on touch devices (iPads allow it; it's fine if it's refused)
