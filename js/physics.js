@@ -230,6 +230,16 @@ function updatePlayer(dt) {
   // bags are solid too (in the pile, on a trolley, lying about): you walk round them, not through them
   for (const it of items) {
     if (!(it.state === 'pile' || it.state === 'ride' || it.state === 'free') || !it.g.visible || it.extra) continue;
+    if (it.type.bouncy && it.state === 'free') {
+      // the beach ball: walk into it and you kick it
+      const dx = it.x - P.x, dz = it.z - P.z, dd = Math.hypot(dx, dz), sp = Math.hypot(P.mvx, P.mvz);
+      if (dd < it.r + 0.3 && dd > 1e-3 && sp > 0.5 && (S.t - (it.kickT || -9)) > 0.4) {
+        it.kickT = S.t; const vx = dx / dd * (sp * 1.6 + 2), vz = dz / dd * (sp * 1.6 + 2);
+        if (isClient()) netSend({ t: 'kick', i: items.indexOf(it), vx: Math.round(vx * 100) / 100, vz: Math.round(vz * 100) / 100 }); else { it.vx = vx; it.vz = vz; it.vy = 2.5 + sp * 0.4; }
+        beep(220, .08, 'triangle', .05);
+      }
+      continue;
+    }
     if (it.y > P.y + 1.3 || it.y + (it.h || 0.4) < P.y + 0.12) continue;   // (one you can step over, or it's up above you)
     const b = bagPush(it, P.x, it.y + 0.05, P.z, 0.26);                     // its real shape: a long cage is long
     if (b && canGo(P.x, P.z, P.y, P.x + b.dx * b.depth, P.z + b.dz * b.depth)) { P.x += b.dx * b.depth; P.z += b.dz * b.depth; }
@@ -261,6 +271,9 @@ function updatePlayer(dt) {
   const g = groundAt(P.x, P.z);
   if (S.jump && g !== null && P.y <= g + 0.03) P.vy = 4.2;
   S.jump = false;
+  // holding the balloons, you're nearly weightless: big floaty jumps, gentle landings
+  const floaty = GRAB.hands.some(h => h && h.k === 'item' && items[h.i] && items[h.i].type.floaty);
+  if (floaty && !(g !== null && P.y <= g + 0.03 && P.vy <= 0)) P.vy += 13 * dt;
   fallBody(P, dt);
   if (P.launched) {
     const f = Math.max(0, 1 - (P.vy === 0 ? 8 : 0.4) * dt);

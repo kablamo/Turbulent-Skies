@@ -303,10 +303,11 @@ function update(dt) {
     camera.rotation.set(P.pitch, P.yaw, 0);
   }
   plane.updateMatrixWorld(true);
-  if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); hostCarry(); hostGrabs(dt); netShoveBags(dt); chatter(dt); }
+  if (H) { updateItems(dt); cargoHost(dt); updatePassengers(dt); updateHeld(); hostCarry(); hostGrabs(dt); netShoveBags(dt); chatter(dt); }
   else netAnimate(dt);
   updateAvatars(dt);
   updateMe(dt);
+  cargoTick(dt);
   interact(dt);
   updateMarkers();
   const tools = heldTools();

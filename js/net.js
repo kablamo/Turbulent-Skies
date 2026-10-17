@@ -215,6 +215,7 @@ function hostOnData(r, m) {
     case 'exit': if (r.driving) exitVehicle(r); break;
     case 'vpush': shoveVehicle(vehicles[m.i], m.dx, m.dz); break;   // a player bumped into a vehicle
     case 'knock': knockOver(passengers[m.i], m.vx, m.vz); break;    // …or ran someone over
+    case 'kick': { const it = items[m.i]; if (it && it.state === 'free') { it.vx = m.vx; it.vz = m.vz; it.vy = 2.5; } break; }   // …or kicked the beach ball
     case 'vehAct': if (r.driving) vehicleAction(r.driving); break;
     case 'busDoor': if (r.driving && r.driving.kind === 'bus') toggleBusDoor(r.driving); break;
     case 'stand': if (S.pilotRP === r) { S.pilotRP = null; netTeleport(r, -0.75, 0, -10, Math.PI); say(`${r.name} left the controls. Autopilot on.`); } break;
@@ -277,7 +278,7 @@ function buildSnap() {
     hole: hole.seg ? [segments.indexOf(hole.seg), hole.side] : null, segs: segBits,
     dr: [doors.L.target, doors.R.target, doors.L.open, doors.R.open, lavDoors.L.target, lavDoors.R.target, lavDoors.L.open, lavDoors.R.open, ramp.target, ramp.open, bus.door.target, bus.door.open].map(r2),
     V: vehicles.map(v => [r2(v.x), r2(v.z), Math.round(v.h * 1000) / 1000]),
-    I: items.map(it => [r2(it.g.position.x), r2(it.g.position.y), r2(it.g.position.z), r2(it.g.rotation.y), it.state, it.g.visible ? 1 : 0, it.type === BAGS.egg ? 1 : 0, it.caged ? 1 : 0]),
+    I: items.map(it => [r2(it.g.position.x), r2(it.g.position.y), r2(it.g.position.z), r2(it.g.rotation.y), it.state, it.g.visible ? 1 : 0, it.type === BAGS.egg ? 1 : 0, it.caged ? 1 : 0, cargoFlags(it)]),
     X: passengers.map(p => [r2(p.g.position.x), r2(p.g.position.y), r2(p.g.position.z), r2(p.g.rotation.y), r2(p.rig.core.rotation.x), r2(p.rig.core.rotation.z),
       p.pose, r2(p.walkT), p.state, p.bubble && p.bubble.visible ? p.bubbleText : '', r2(p.mood), p.calling ? p.calling.text : null, p.seat ? seats.indexOf(p.seat) : -1, p.angry > 0 ? 1 : 0,
       p.rag ? p.rag.pos.flatMap(v => [r2(v.x), r2(v.y), r2(v.z)]) : null]),                    // a ragdoll's joints
@@ -353,9 +354,10 @@ function applySnap(m) {
   });
   // luggage (new eggs appear as the chicken lays them)
   while (items.length < m.I.length) spawnBag(BAGS.egg);
-  m.I.forEach(([x, y, z, ry, state, vis, egg, caged], i) => {
+  m.I.forEach(([x, y, z, ry, state, vis, egg, caged, fx], i) => {
     const it = items[i];
     if (it.state === 'gone') return;
+    applyCargoFlags(it, fx);
     if (it.g.userData.cage) { it.caged = !!caged; it.g.userData.cage.visible = !!caged; }
     it.net = { x, y, z, ry }; it.state = state; it.g.visible = !!vis;
     if (!it.placed) { it.g.position.set(x, y, z); it.placed = true; }
@@ -394,6 +396,8 @@ function applySnap(m) {
     NET.quiet = true;
     try {
       if (e[0] === 'explode') explode(e[1]);
+      else if (e[0] === 'confetti') burstConfetti(e[1], e[2], e[3]);
+      else if (e[0] === 'nuke') nukeLooks(e[1], e[2], e[3]);
       else if (e[0] === 'eject' && passengers[e[1]].state !== 'gone') ejectPassenger(passengers[e[1]]);
       else if (e[0] === 'lost' && items[e[1]].state !== 'gone') { const it = items[e[1]]; overboard(it); toDebris(it.g, new THREE.Vector3(rand(-2, 2), -2, 25)); }
       else if (e[0] === 'over') { NET.quiet = false; showGameOver(e[1]); }

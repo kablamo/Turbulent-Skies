@@ -99,6 +99,68 @@ const BAGS = {
     const wings = [-1, 1].map(s => { const w = new THREE.Group(); w.position.set(s * 0.14, 0.3, 0); g.add(w); sph(0.08, M.white, s * 0.04, -0.03, 0.02, w, [0.4, 0.8, 1.4]); return w; });
     g.userData.wings = wings;
   } },
+  // ---- cargo you can do things with (cargo.js has what they do). `loose` ones sit round the edge of the pile.
+  beachball: { name: 'beach ball', r: 0.3, bouncy: true, loose: true, build: g => {
+    const tex = canvasTex(128, 64, (c, w, h) => { ['#ff3b3b', '#ffffff', '#2f7bff', '#ffd400', '#ffffff', '#2fd16b'].forEach((col, i) => { c.fillStyle = col; c.fillRect(i * w / 6, 0, w / 6 + 1, h); }); });
+    sph(0.3, new THREE.MeshStandardMaterial({ map: tex, roughness: .35 }), 0, 0.3, 0, g);
+  } },
+  boombox: { name: 'boombox', r: 0.32, loose: true, build: g => {
+    box(0.62, 0.34, 0.2, mat(0x2a2a33), 0, 0.17, 0, g);
+    for (const s of [-1, 1]) { const sp = cyl(0.11, 0.11, 0.04, mat(0x111111), s * 0.17, 0.17, -0.1, g); sp.rotation.x = Math.PI / 2; const c = cyl(0.04, 0.04, 0.05, M.steel, s * 0.17, 0.17, -0.11, g); c.rotation.x = Math.PI / 2; }
+    box(0.14, 0.06, 0.03, mat(0x55ffaa, { emissive: 0x115533 }), 0, 0.27, -0.105, g);
+    box(0.5, 0.04, 0.04, M.steel, 0, 0.4, 0, g); for (const s of [-1, 1]) box(0.04, 0.08, 0.04, M.steel, s * 0.23, 0.36, 0, g);
+  } },
+  balloons: { name: 'bunch of balloons', r: 0.25, floaty: true, loose: true, build: g => {
+    box(0.16, 0.12, 0.16, mat(0x777777), 0, 0.06, 0, g);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2, x = Math.cos(a) * 0.16, z = Math.sin(a) * 0.16, y = 1.25 + (i % 3) * 0.12;
+      sph(0.16, mat(new THREE.Color().setHSL(i / 6, 0.85, 0.55), { roughness: .25 }), x, y, z, g, [1, 1.2, 1]);
+      const st = cyl(0.004, 0.004, y - 0.1, M.white, x / 2, (y + 0.1) / 2, z / 2, g); st.rotation.set(z * 0.3, 0, -x * 0.3);
+    }
+  } },
+  pizza: { name: 'pizza boxes', r: 0.3, loose: true, build: g => {
+    g.userData.slices = [0, 1, 2].map(k => { const b = box(0.5, 0.055, 0.5, mat(0xc8a26a), 0, 0.03 + k * 0.06, 0, g); return b; });
+    textPlane(0.36, 0.12, '🍕 PIZZA', '#c8a26a', '#b3202a', g, 0, 0.185, 0, 0, 'bold 44px sans-serif').rotation.x = -Math.PI / 2;
+  } },
+  cat: { name: 'cat', r: 0.3, cage: true, loose: true, alive: { speed: 1.1, kind: 'cat' }, build: g => {
+    const fur = mat(0xf2a33a);
+    sph(0.15, fur, 0, 0.16, 0.05, g, [1, 0.9, 1.5]); sph(0.11, fur, 0, 0.26, -0.17, g);
+    for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.08, 6), fur); e.position.set(s * 0.06, 0.37, -0.17); g.add(e); sph(0.022, mat(0x2a8a2a), s * 0.04, 0.28, -0.27, g); }
+    const tail = new THREE.Group(); tail.position.set(0, 0.2, 0.25); g.add(tail); const tl = cyl(0.025, 0.02, 0.32, fur, 0, 0.14, 0.04, tail); tl.rotation.x = -0.4; g.userData.tail = tail;
+    // its travel carrier (it'll squeeze out sooner or later)
+    const cage = new THREE.Group(); g.add(cage); g.userData.cage = cage;
+    const shell = mat(0xff8fc8);
+    box(0.44, 0.04, 0.66, shell, 0, 0.02, 0, cage); box(0.44, 0.04, 0.66, shell, 0, 0.44, 0, cage);
+    for (const s of [-1, 1]) box(0.04, 0.44, 0.66, shell, s * 0.22, 0.22, 0, cage);
+    box(0.44, 0.44, 0.04, shell, 0, 0.22, 0.33, cage);
+    for (let k = 0; k < 5; k++) box(0.025, 0.4, 0.025, M.steel, -0.16 + k * 0.08, 0.22, -0.33, cage);
+    box(0.2, 0.04, 0.04, shell, 0, 0.5, 0, cage);
+  } },
+  mystery: { name: 'mystery box', r: 0.28, loose: true, build: g => {
+    box(0.44, 0.38, 0.44, mat(0xd8342c), 0, 0.19, 0, g);
+    for (const r of [0, Math.PI / 2]) box(0.46, 0.4, 0.07, mat(0xffd34a), 0, 0.2, 0, g).rotation.y = r;
+    const lid = new THREE.Group(); lid.position.y = 0.38; g.add(lid); g.userData.lid = lid;
+    box(0.48, 0.07, 0.48, mat(0xd8342c), 0, 0.035, 0, lid); sph(0.07, mat(0xffd34a), -0.05, 0.1, 0, lid, [1.4, 0.7, 0.7]); sph(0.07, mat(0xffd34a), 0.05, 0.1, 0, lid, [1.4, 0.7, 0.7]);
+    // a spring snake, hidden inside until someone opens it…
+    const snake = new THREE.Group(); snake.visible = false; snake.position.y = 0.3; g.add(snake); g.userData.snake = snake;
+    for (let k = 0; k < 7; k++) cyl(0.09, 0.09, 0.07, mat(k % 2 ? 0x2fd16b : 0xffd400), 0, k * 0.08, 0, snake);
+    sph(0.1, mat(0x2fd16b), 0, 0.6, 0, snake); for (const s of [-1, 1]) sph(0.025, M.dark, s * 0.04, 0.64, -0.08, snake);
+  } },
+  popper: { name: 'party popper crate', r: 0.3, loose: true, popper: true, build: g => {
+    box(0.5, 0.36, 0.4, M.wood, 0, 0.18, 0, g);
+    textPlane(0.44, 0.14, 'PARTY! 🎉', '#8a5a2b', '#ffe066', g, 0, 0.2, -0.205, Math.PI, 'bold 40px sans-serif');
+    for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 10), mat(new THREE.Color().setHSL(k / 4, 0.8, 0.55))); c.position.set(-0.15 + k * 0.1, 0.42, 0); c.rotation.x = Math.PI; g.add(c); }
+  } },
+  // a cartoon nuke. Don't press the button. (Someone will press the button.)
+  nuke: { name: 'nuke', r: 0.45, loose: true, build: g => {
+    const body = mat(0x4a5a3a, { metalness: .4, roughness: .5 });
+    sph(0.36, body, 0, 0.4, 0, g, [1, 1, 1.35]);
+    const nose = sph(0.2, body, 0, 0.4, -0.42, g);
+    for (const r of [0, Math.PI / 2]) box(0.04, 0.4, 0.3, body, 0, 0.4, 0.55, g).rotation.z = r;   // tail fins
+    for (let k = 0; k < 8; k++) box(0.1, 0.1, 0.06, mat(k % 2 ? 0x111111 : 0xffd400), Math.cos(k / 8 * Math.PI * 2) * 0.34, 0.4 + Math.sin(k / 8 * Math.PI * 2) * 0.34, 0.1, g);
+    for (const s of [-1, 1]) textPlane(0.5, 0.16, 'NUKE ☢ DO NOT DROP', '#4a5a3a', '#ffd400', g, s * 0.365, 0.45, -0.05, s * Math.PI / 2, 'bold 34px sans-serif');
+    const btn = cyl(0.06, 0.07, 0.05, mat(0xff1a1a, { emissive: 0x440000 }), 0, 0.78, -0.05, g); g.userData.button = btn;
+  } },
   egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
 };
 // a point (x, y, z) against a bag's box: how far it pokes in, and which way to push it out (null if outside)
@@ -427,14 +489,19 @@ const PAX_COUNT = 20, PAX_NEEDED = 8;
   // always one in reach. Any BAGS_NEEDED of them in the cargo bay will do.
   const spare = ['suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase',
     'backpack', 'briefcase', 'suitcase', 'backpack', 'suitcase', 'briefcase', 'backpack', 'suitcase'];
-  for (const k of [...MANIFEST, ...spare]) spawnBag(BAGS[k]);
+  for (const k of [...MANIFEST, ...spare, 'beachball', 'boombox', 'balloons', 'pizza', 'cat', 'mystery', 'popper', 'nuke']) spawnBag(BAGS[k]);
   buildPile();
 })();
 const BAGS_NEEDED = 12;
 // stack the bags into a heap: a wide bottom layer, smaller layers on top. Each bag remembers the ones it's
 // resting on; take one of those away and it tumbles down.
 function buildPile() {
-  const cx = BELT_X - 1.6, cz = BELT_END - 2.2, list = items.filter(i => !i.extra);
+  const cx = BELT_X - 1.6, cz = BELT_END - 2.2, list = items.filter(i => !i.extra && !i.type.loose);
+  items.filter(i => i.type.loose).forEach((it, k, all) => {   // the fun stuff waits round the edge where you can see it
+    const a = Math.PI * (0.3 + 1.4 * k / Math.max(1, all.length - 1));   // (spread out, so it's clear which one you're pointing at)
+    it.x = cx + Math.cos(a) * 3.4; it.z = cz + Math.sin(a) * 3.4; it.y = GROUND; it.state = 'free'; it.pileUnder = [];
+    it.spinY = rand(0, 6.3); it.g.visible = true; it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
+  });
   const layers = [], per = [14, 9, 5, 2];
   let n = 0;
   for (let L = 0; L < per.length && n < list.length; L++) {
@@ -548,9 +615,9 @@ function crocBreaksOut(it) {
     freeSlot(it); it.state = 'free'; it.vx = Math.cos(a) * 3.5; it.vz = Math.sin(a) * 3.5; it.vy = 3; it.noCatchT = S.t + 2;
   }
   it.wanderT = 0;
-  boing(); say('🐊 The crocodile has broken out of his cage! Everybody stay calm. (Nobody stays calm.)', 'bad');
+  boing(); say(it.alive.kind === 'cat' ? '🐱 The cat squeezed out of its carrier! Everybody say "awww".' : '🐊 The crocodile has broken out of his cage! Everybody stay calm. (Nobody stays calm.)', it.alive.kind === 'cat' ? 'good' : 'bad');
   const near = passengers.find(p => p.state !== 'gone' && Math.hypot(p.x - it.x, p.z - it.z) < 5);
-  if (near) shout(near, pick(YELLS.croc));
+  if (near) shout(near, it.alive.kind === 'cat' ? pick(['A KITTY!', 'Awww!', 'Here, puss puss!']) : pick(YELLS.croc));
 }
 function updateItems(dt) {
   if (S.phase === 'airport') updateConveyor(dt);
@@ -588,7 +655,7 @@ function updateItems(dt) {
     cabinForces(it, force);
     it.vx += force.x * dt; it.vz += force.z * dt;
     const grounded = it.y <= (groundAt(it.x, it.z) ?? -99) + 0.03;
-    if (grounded) { const fr = Math.max(0, 1 - 3.5 * dt); it.vx *= fr; it.vz *= fr; }
+    if (grounded) { const fr = Math.max(0, 1 - (it.type.bouncy ? 0.5 : 3.5) * dt); it.vx *= fr; it.vz *= fr; }   // (a ball rolls on and on)
     if (it.alive && !it.caged) liveCargo(it, dt, grounded);
     const [hx, hz] = moveBody(it, it.vx * dt, it.vz * dt);
     if (hx) it.vx *= -0.3;

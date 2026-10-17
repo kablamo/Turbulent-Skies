@@ -186,6 +186,7 @@ function letGo(g) {
   if (g.k === 'item') {
     const it = items[g.i]; if (!it || it.state !== 'grabbed') return;
     it.state = 'free';
+    cargoLetGo(it); if (it.state !== 'free') return;   // (balloons float off, popper crates pop, nukes arm…)
     // let go of a bag over a luggage trolley (gently): it goes on the trolley
     const v = S.phase === 'airport' && Math.hypot(it.vx, it.vz) < 3 && trolleyNear(it.x, it.z, 0.35);
     if (v) { const slot = trolleySpot(v, it); if (slot) { slot.item = it; it.slot = slot; it.state = 'ride'; beep(380, .08, 'triangle', .05); } else say(trolleyFullMsg(v, it), 'bad'); }

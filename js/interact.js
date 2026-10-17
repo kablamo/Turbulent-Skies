@@ -49,7 +49,9 @@ function actionFor(ud, who = LOCAL) {
   if (ud.item) {
     const it = ud.item;
     if (it.state === 'gone' || it.state === 'queue' || it.state === 'held' || it.state === 'grabbed') return null;
-    return { key: 'grab', type: 'grab', ready: true, label: `grab the ${it.name}` };   // (your hands do it: grab.js)
+    // your hands pick things up (grab.js); E does whatever the thing does, if anything (cargo.js)
+    const use = cargoUse(it);
+    return { key: 'grab', type: 'grab', ready: true, label: `grab the ${it.name}` + (use ? ` · <kbd>E</kbd>${use.label}` : ''), done: use ? use.done : undefined };
   }
   if (ud.passenger) {
     const p = ud.passenger;
@@ -229,6 +231,7 @@ function interact(dt) {
     if (!act.ready && act.why) { say(act.why); beep(200, .1); }
     else if (act.type === 'press') { act.done(); S.holdLock = true; }
     else if (act.type === 'mash') act.mash();
+    else if (act.type === 'grab' && act.done) act.done();   // E on cargo that does something (cargo.js)
   }
   S.press = S.drop = S.act = false;
   if (act && act.type === 'mash') prog = act.mashProg;
@@ -390,7 +393,8 @@ function helpHTML() {
       <tr><td>Mouse or ${k_('←', '↑', '↓', '→')}</td><td>Look around</td></tr>
       <tr><td>${k_('Shift')}</td><td>Run</td></tr>
       <tr><td>${k_('Space')}</td><td>Jump</td></tr>
-      <tr><td>${k_('E')}</td><td>Also uses things, if you'd rather</td></tr>
+      <tr><td>${k_('E')}</td><td>Uses things: switch on the 📻 boombox, share 🍕 pizza, open the 🎁 mystery box, pet the 🐱 cat, press the ☢ nuke's button (don't)</td></tr>
+      <tr><td>Fun cargo</td><td>Kick the 🏖 beach ball; hold the 🎈 balloons to float; throw the 🎉 party crate for confetti</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying (next to the luggage trolley, it goes on the trolley)</td></tr>
       <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
