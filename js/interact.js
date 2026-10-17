@@ -17,7 +17,7 @@ function boarding() {
 }
 // put someone (you or a remote player) in the captain's seat
 function takeSeat(who) {
-  if (who.isLocal) { S.flying = true; P.yaw = 0; P.pitch = 0.02; }
+  if (who.isLocal) { S.flying = true; S.chase = true; P.yaw = 0; P.pitch = 0.02; }
   else S.pilotRP = who;
 }
 function takeOff(who = LOCAL) {
@@ -145,9 +145,9 @@ function interact(dt) {
     S.press = S.drop = S.act = false;
     if (!S.driving) return;
     const v = S.driving;
-    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>${INTERACT}</kbd>let go · ${v.whole.item ? 'the ' + v.whole.item.name : trolleyLoad(v) + '/' + v.slots.length + ' bags'}`, true); return; }
+    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>${INTERACT}</kbd>let go · ${v.whole.item ? 'the ' + v.whole.item.name : trolleyLoad(v) + '/' + v.slots.length + ' bags'}`, true); return; }
     const extra = ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
-    setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>${INTERACT}</kbd>get up${extra}`, true);
+    setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>${INTERACT}</kbd>get up${extra}`, true);
     return;
   }
   if (S.flying) {
@@ -155,8 +155,8 @@ function interact(dt) {
     else if (S.press) { S.flying = false; S.chase = false; P.z = -10.0; P.yaw = Math.PI; say(inAir() ? 'Autopilot holding course.' : 'Autopilot is handling the takeoff.'); }
     S.press = S.drop = S.act = false;
     if (S.phase === 'takeoff' && !S.liftoff) setPrompt(S.toSpeed > 0.75 ? '<kbd>Hold W</kbd> PULL UP!' : `Speed ${Math.round(S.toSpeed * 160)} km/h… keep it straight`, S.toSpeed <= 0.75);
-    else if (S.phase === 'landing') setPrompt(S.touched ? 'Braking…' : '<kbd>A</kbd><kbd>D</kbd> line up with the runway <kbd>C</kbd> camera', true);
-    else setPrompt(`<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>C</kbd> camera <kbd>${INTERACT}</kbd> get up`, true);
+    else if (S.phase === 'landing') setPrompt(S.touched ? 'Braking…' : '<kbd>A</kbd><kbd>D</kbd> line up with the runway', true);
+    else setPrompt(`<kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd><kbd>S</kbd> climb/dive <kbd>${INTERACT}</kbd> get up`, true);
     return;
   }
   if (P.sitV) {
@@ -344,14 +344,12 @@ function keyDown(k, repeat) {
   keys[k] = true;
   if (repeat) return;
   if (k === 'enter' && S.running && !S.over && S.paused) resume();
-  if (k === 'v' && S.running && !S.over) { S.view = S.view === 'third' ? 'first' : 'third'; sayLocal(S.view === 'third' ? '🎥 Third person (V for first person)' : '👀 First person (V for third person)'); }
   if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else showPause(); }
   if ((k === 'h' || k === '?') && S.running && !S.over) { if (S.helpOpen) resume(); else showPause(true); }
   if (k === 'escape' && S.helpOpen) resume();
   if (k === 'e') S.press = true;
   if (k === 'q') S.drop = true;
   if (k === 'f') S.act = true;
-  if (k === 'c' && (S.driving || S.flying)) S.chase = !S.chase;
   if (k === ' ') S.jump = true;
 }
 function keyUp(k) { keys[k] = false; }
@@ -402,20 +400,17 @@ function helpHTML() {
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer</td></tr>
       <tr><td>${k_('F')}</td><td>Board or unload passengers (bus)</td></tr>
       <tr><td>${k_('Q')}</td><td>Open or close the bus door</td></tr>
-      <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
       <tr><td>${k_('E')}</td><td>Get up (let go of the trolley)</td></tr>
       <tr><td>${k_('E')} on a seat</td><td>Ride along while someone else drives (or jump onto the trolley)</td></tr>
       <tr><th colspan="2">Flying (captain's seat)</th></tr>
       <tr><td>${k_('A', 'D')} or ${k_('←', '→')}</td><td>Steer (and line up with the runway)</td></tr>
       <tr><td>${k_('W', 'S')} or ${k_('↑', '↓')}</td><td>Climb and dive (hold W to take off)</td></tr>
-      <tr><td>${k_('C')}</td><td>Switch camera</td></tr>
       <tr><td>${k_('E')}</td><td>Get up (the autopilot takes over)</td></tr>
       <tr><th colspan="2">Game</th></tr>
       <tr><td>${k_('P')}</td><td>Pause</td></tr>
       <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
       <tr><td>Left mouse: <b>Interact</b></td><td>Use what you're pointing at (doors, seats, controls, repairs). Hold it on a bag, a passenger, a trolley or a wall and your hands grab it; let go to drop or throw</td></tr>
       <tr><td>Hold ${k_('R')}</td><td>Go floppy (you're a ragdoll!) — let go to get back up</td></tr>
-      <tr><td>${k_('V')}</td><td>Switch between third person and first person</td></tr>
       <tr><td>${k_('H')}</td><td>This help screen</td></tr>
     </table></div>`;
   const touch = `<div>
@@ -424,7 +419,7 @@ function helpHTML() {
       <tr><td>Left stick</td><td>Walk, drive and fly (push all the way to run)</td></tr>
       <tr><td>Drag on the right side</td><td>Look around</td></tr>
       <tr><td>${k_('E')} button</td><td>Use, pick up, throw (hold or tap fast for repairs)</td></tr>
-      <tr><td>${k_('Q')} ${k_('F')} ${k_('C')} ${k_('⤒')}</td><td>Put down / bus door, vehicle job, camera, jump (they appear when you can use them)</td></tr>
+      <tr><td>${k_('Q')} ${k_('F')} ${k_('⤒')}</td><td>Put down / bus door, vehicle job, jump (they appear when you can use them)</td></tr>
       <tr><td>${k_('II')} ${k_('?')}</td><td>Pause, this help screen</td></tr>
     </table></div>`;
   return `<h1>🎮 Controls</h1><div class="helpCols">${TOUCH ? touch + keyboard : keyboard + touch}</div>`;

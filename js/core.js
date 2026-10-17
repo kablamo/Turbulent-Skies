@@ -234,7 +234,7 @@ function station(id, name, area, mesh, extra = {}) {
 
 // ---------------------------------------------------------------- game state
 const S = {
-  running: false, paused: false, over: false, view: 'first', phase: 'airport', t: 0, dist: 0, integrity: 100, seatbelt: false, flying: false, driving: null,
+  running: false, paused: false, over: false, view: 'third', phase: 'airport', t: 0, dist: 0, integrity: 100, seatbelt: false, flying: false, driving: null,
   toT: 0, toSpeed: 0, liftoff: false, alt: 0, pitch: 0,
   turb: 0, flash: 0, shake: 0, roll: 0, gust: 0, gustT: 0,
   needs: { calm: 90, hunger: 85, bored: 85, comfort: 85 },

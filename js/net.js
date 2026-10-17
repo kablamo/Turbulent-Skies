@@ -382,7 +382,7 @@ function applySnap(m) {
   if (me) {
     const wasDriving = S.driving;
     S.driving = me.drv >= 0 ? vehicles[me.drv] : null;
-    if (S.driving && !wasDriving) { P.yaw = S.driving.h; S.chase = false; }
+    if (S.driving && !wasDriving) { P.yaw = S.driving.h; S.chase = true; }
     if (me.fly && !S.flying) { P.yaw = 0; P.pitch = 0.02; }
     S.flying = me.fly;
     S.held = !me.held ? null : me.held[0] === 'pax' ? passengers[me.held[1]] : items[me.held[1]];

@@ -174,10 +174,10 @@ function bowlOver(v, x, z, h, vx, vz) {
 function enterVehicle(v, who = LOCAL) {
   if (vehicles.some(o => o === v && (o === S.driving || NET.remotes.some(r => r.driving === o)))) return say(`Someone is already driving the ${v.name}.`);
   if (!who.isLocal) { who.driving = v; v.v = 0; return; }
-  S.driving = v; v.v = 0; S.chase = false;
+  S.driving = v; v.v = 0; S.chase = true;   // (third person: the camera follows behind)
   P.yaw = v.h; P.pitch = -0.08;
-  if (v.push) { say(`You grab the ${v.name}. W/S push · A/D turn · C camera · E let go`); beep(320, .12, 'triangle', .05); return; }
-  say(`You take the wheel of the ${v.name}. W/S drive · A/D steer · ${v.kind === 'bus' ? 'F board / unload passengers · Q door · ' : ''}C camera · E get up`);
+  if (v.push) { say(`You grab the ${v.name}. W/S push · A/D turn · Interact to let go`); beep(320, .12, 'triangle', .05); return; }
+  say(`You take the wheel of the ${v.name}. W/S drive · A/D steer · ${v.kind === 'bus' ? 'F board / unload passengers · Q door · ' : ''}Interact to get up`);
   beep(200, .3, 'sawtooth', .05);
 }
 function exitVehicle(who = LOCAL) {
