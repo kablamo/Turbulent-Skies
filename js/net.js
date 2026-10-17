@@ -296,6 +296,8 @@ function netRef(ud) {
   if (ud.passenger) return { pax: passengers.indexOf(ud.passenger) };
   if (ud.drive) return { drive: vehicles.indexOf(ud.drive) };
   if (ud.busDoor) return { busDoor: vehicles.indexOf(ud.busDoor) };
+  if (ud.detonator) return { detonator: vehicles.indexOf(ud.detonator) };
+  if (ud.autoload) return { autoload: 1 };
   if (ud.station) return { station: ud.station };
   return null;
 }
@@ -306,6 +308,8 @@ function hostRef(ref) {
   if (ref.pax !== undefined) return passengers[ref.pax] && { passenger: passengers[ref.pax] };
   if (ref.drive !== undefined) return vehicles[ref.drive] && { drive: vehicles[ref.drive] };
   if (ref.busDoor !== undefined) return vehicles[ref.busDoor] && { busDoor: vehicles[ref.busDoor] };
+  if (ref.detonator !== undefined) return vehicles[ref.detonator] && { detonator: vehicles[ref.detonator] };
+  if (ref.autoload) return { autoload: true };
   if (ref.station && STATIONS[ref.station]) return { station: ref.station };
   return null;
 }

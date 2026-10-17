@@ -279,7 +279,7 @@ function fitTrolley(v, scene) {
   scene.traverse(o => {
     if (!o.isMesh) return;
     if (/cylinder|wheel/.test(normName(o.name))) { o.material = M.dark; wheels.push(o); }
-    else if (tintable(o.material) || !o.material.name) o.material = TROLLEY.color;
+    else if (tintable(o.material) || !o.material.name) o.material = v.paint || TROLLEY.color;
   });
   v.g.add(scene);
   v.standIn.visible = false;

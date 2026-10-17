@@ -37,6 +37,12 @@ function takeOff(who = LOCAL) {
 
 // what pressing E does on whatever the crosshair is over (null = nothing, look past it)
 function actionFor(ud, who = LOCAL) {
+  if (ud.autoload) return S.phase === 'airport' ? { key: 'autoload', type: 'press', ready: true, label: '🧳 AUTO LOAD the luggage into the plane', done: () => autoLoad() } : null;
+  if (ud.detonator) {
+    const nk = items.find(i => i.type === BAGS.nuke);
+    const ok = nk && nk.state !== 'gone' && !nk.armed;
+    return { key: 'detonate', type: 'press', ready: ok, label: '☢ PRESS THE BIG RED BUTTON', why: nk && nk.armed ? 'It\'s already counting down. RUN!!!' : 'The nuke has already gone off. (There was only one.)', done: () => armNuke(nk) };
+  }
   if (ud.busDoor) return S.phase === 'airport' ? { key: 'busdoor', type: 'press', ready: true, label: `${ud.busDoor.door.target ? 'Close' : 'Open'} the bus door`, done: () => toggleBusDoor(ud.busDoor) } : null;
   if (ud.vehSeat) {
     const { v, s } = ud.vehSeat;
@@ -196,10 +202,17 @@ function interact(dt) {
   // in third person you aim with the camera, but can only reach things near your character
   const third = S.camThird;
   raycaster.far = third ? S.camDist + 2.9 : 2.7;
-  if (third) plane.localToWorld(_eyeW.set(P.x, P.y + EYE - 0.3, P.z));
+  if (third) plane.localToWorld(_eyeW.set(P.x, P.y + EYE - 0.1, P.z));
   const hits = P.falling ? [] : raycaster.intersectObjects(targets, false).filter(h => !third || (h.point.distanceTo(_eyeW) < 2.6 && h.distance > S.camDist * 0.7));
   let act = null, ref = null;
-  for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
+  // third person: first look straight out from your character's eyes the way the camera faces (so small things
+  // right in front of you, like a button, aren't skipped by a camera ray passing over them)…
+  if (third && !P.falling) {
+    raycaster.set(_eyeW, camera.getWorldDirection(new THREE.Vector3())); raycaster.far = 2.6;
+    for (const h of raycaster.intersectObjects(targets, false)) { const a = actionFor(h.object.userData); if (a) { act = a; ref = h.object.userData; break; } }
+  }
+  // …then whatever the crosshair is on
+  if (!act) for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
   const decide = () => { if (rDown && !GRAB.mode) { GRAB.mode = act && act.ready && act.type !== 'grab' && act.type !== 'info' ? 'act' : 'grab'; if (GRAB.mode === 'act') S.press = true; } };
   // third person: if the crosshair isn't on anything, try what's just in front of your character
   if (third && !act && !P.falling) {

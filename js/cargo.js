@@ -65,12 +65,12 @@ function armNuke(it) {
   if (it.armed) return;
   it.armed = S.t;
   say('☢ The nuke is ARMED! 5… 4… RUN!', 'bad');
-  for (const p of passengers) if (p.state !== 'gone' && Math.hypot(p.x - it.x, p.z - it.z) < 14) shout(p, pick(['WHY WOULD YOU DO THAT?!', 'RUUUUN!', 'I KNEW this flight was cursed!', 'MOMMY!']), 3);
+  for (const p of passengers) if (p.state !== 'gone' && Math.hypot(p.x - it.x, p.z - it.z) < 22) shout(p, pick(['WHY WOULD YOU DO THAT?!', 'RUUUUN!', 'I KNEW this flight was cursed!', 'MOMMY!']), 3);
 }
 // the boom itself, as everyone sees it
 function nukeLooks(x, y, z) {
   S.flash = 1.2; S.shake = 3;
-  for (let i = 0; i < 160; i++) emitLocal(fireFx, x, y, z, rand(-16, 16), rand(-2, 18), rand(-16, 16), pick([0xffffff, 0xffee88, 0xffaa22, 0xff5511]), rand(1.5, 3.5), rand(0.5, 1.4), 2.5);
+  for (let i = 0; i < 220; i++) emitLocal(fireFx, x, y, z, rand(-24, 24), rand(-2, 24), rand(-24, 24), pick([0xffffff, 0xffee88, 0xffaa22, 0xff5511]), rand(1.5, 3.5), rand(0.5, 1.4), 2.5);
   // a mushroom cloud: a stalk going up, and a big round top
   for (let i = 0; i < 70; i++) emitLocal(smokeFx, x + rand(-0.8, 0.8), y + rand(0, 2), z + rand(-0.8, 0.8), rand(-0.6, 0.6), rand(5, 9), rand(-0.6, 0.6), pick([0x777777, 0x555555, 0x997755]), rand(2, 3.5), rand(2.5, 4), 2, 0.9);
   for (let i = 0; i < 70; i++) { const a = rand(0, 6.3); emitLocal(smokeFx, x, y + 10, z, Math.cos(a) * rand(2, 6), rand(4, 7), Math.sin(a) * rand(2, 6), pick([0x888888, 0x666666, 0xaa8866]), rand(3, 5), rand(3, 5), 2.5, 0.85); }
@@ -83,10 +83,10 @@ function nukeBoom(it) {
   nukeLooks(x, y, z);
   it.state = 'gone'; it.g.visible = false; it.armed = 0;
   if (holder) { holder.held = null; it.holder = null; }
-  const away = (px, pz, power) => { const dx = px - x, dz = pz - z, d = Math.hypot(dx, dz) || 1, k = power * Math.max(0, 1 - d / 14); return { vx: dx / d * k, vz: dz / d * k, up: k * 0.7, k }; };
+  const away = (px, pz, power) => { const dx = px - x, dz = pz - z, d = Math.hypot(dx, dz) || 1, k = power * Math.max(0, 1 - d / 22); return { vx: dx / d * k, vz: dz / d * k, up: k * 0.7, k }; };
   // everyone nearby goes flying (seatbelts or not)
   for (const p of passengers) {
-    if (p.state === 'gone' || Math.hypot(p.x - x, p.z - z) > 14) continue;
+    if (p.state === 'gone' || Math.hypot(p.x - x, p.z - z) > 22) continue;
     if (p.seat) { p.seat.occupant = null; p.seat = null; }
     if (p.busSeat) { p.busSeat.p = null; p.busSeat = null; }
     if (p.state === 'held' && p.holder) { p.holder.held = null; p.holder = null; }
@@ -95,7 +95,7 @@ function nukeBoom(it) {
   }
   // luggage everywhere
   for (const o of items) {
-    if (o === it || o.state === 'gone' || o.state === 'queue' || Math.hypot(o.x - x, o.z - z) > 14) continue;
+    if (o === it || o.state === 'gone' || o.state === 'queue' || Math.hypot(o.x - x, o.z - z) > 22) continue;
     if (o.state === 'ride') freeSlot(o);
     if (o.state === 'held' && o.holder) { o.holder.held = null; o.holder = null; }
     const a = away(o.x, o.z, 14); o.state = 'free'; o.vx = a.vx; o.vz = a.vz; o.vy = a.up + 2;
@@ -103,7 +103,7 @@ function nukeBoom(it) {
   // vehicles skid away; players get launched
   if (S.phase === 'airport') for (const v of vehicles) { const a = away(v.x, v.z, 2.5); if (a.k > 0) for (let n = 0; n < 6; n++) shoveVehicle(v, a.vx / 6, a.vz / 6); }
   for (const w of [LOCAL, ...NET.remotes]) {
-    const pz = w.isLocal ? P : w.pose; if (Math.hypot(pz.x - x, pz.z - z) > 14) continue;
+    const pz = w.isLocal ? P : w.pose; if (Math.hypot(pz.x - x, pz.z - z) > 22) continue;
     const a = away(pz.x, pz.z, 14), v = { x: a.vx, y: a.up + 4, z: a.vz };
     if (w.isLocal) launchMe(v); else if (w.conn && w.conn.open) w.conn.send({ t: 'launch', x: v.x, y: v.y, z: v.z });
   }
@@ -126,7 +126,8 @@ function cargoTick(dt) {
     if (it.type === BAGS.nuke && it.armed) {
       const left = 5 - (S.t - it.armed);
       if ((it.beepT = (it.beepT || 0) - dt) <= 0) { it.beepT = Math.max(0.07, 0.55 * left / 5); beep(1200, 0.06, 'square', 0.06); }
-      it.g.userData.button.material.emissive.setHex(Math.sin(S.t * 30) > 0 ? 0xff0000 : 0x330000);
+      const flash = Math.sin(S.t * 30) > 0 ? 0xff0000 : 0x330000;
+      it.g.userData.button.material.emissive.setHex(flash); if (nukeTrolley.button) nukeTrolley.button.material.emissive.setHex(flash);
     }
     if (it.type === BAGS.cat && !it.caged && it.g.userData.tail) it.g.userData.tail.rotation.y = Math.sin(S.t * 4 + it.phase) * 0.6;
   }
@@ -145,6 +146,7 @@ function cargoHost(dt) {
       if (it.floatT > 12) { it.state = 'gone'; it.g.visible = false; }
     }
     if (k === BAGS.nuke && it.armed && S.t - it.armed >= 5) nukeBoom(it);
+    if (it.state === 'auto') autoLoadFly(it, dt);
     if (k === BAGS.boombox && it.on) {
       if (inAir()) S.needs.bored = Math.min(100, S.needs.bored + dt * 1.5);
       if (Math.random() < dt * 0.3) cheer(it.x, it.z, 7, ['🎶 Dance break!', 'This slaps!', '*dances*', 'Turn it UP!']);
@@ -171,4 +173,49 @@ function applyCargoFlags(it, f) {
   if (it.type === BAGS.mystery && (f & 2) && !it.opened) { it.opened = true; it.outcome = (f >> 4) & 3; it.g.userData.lid.visible = false; if (it.outcome === 1) it.g.userData.snake.visible = true; }
   if (it.type === BAGS.pizza) { it.slices = (f >> 2) & 3; it.g.userData.slices.forEach((b, k) => { b.visible = k < it.slices; }); }
   if (it.type === BAGS.nuke) { if (f & 64) it.armed = it.armed || S.t; else it.armed = 0; }
+}
+
+// ---------------------------------------------------------------- the AUTO LOAD button (in the terminal)
+// One press and the bags the flight still needs fly in a big arc from the pile into the plane's cargo bay.
+// (It won't touch the nuke, and it leaves animals in their carriers alone.)
+(function autoLoadKiosk() {
+  const k = new THREE.Group(); k.position.set(3.6, GROUND, TERM.z0 + 2.4); airport.add(k);
+  box(0.7, 1.0, 0.5, std(0x2c4a63), 0, 0.5, 0, k);
+  box(0.6, 0.05, 0.4, M.dark, 0, 1.02, 0, k);
+  const btn = cyl(0.13, 0.15, 0.08, std(0x22dd55, { emissive: 0x0a4418 }), 0, 1.08, 0, k);
+  textPlane(1.3, 0.34, '🧳 AUTO LOAD ➜ ✈', '#2c4a63', '#ffd34a', k, 0, 1.6, -0.26, Math.PI, 'bold 44px sans-serif');
+  box(0.06, 0.5, 0.06, M.steel, 0, 1.3, 0.2, k);
+  const hit = box(0.8, 1.4, 0.7, M.hit, 0, 0.8, 0, k); hit.userData.autoload = true; targets.push(hit);
+  BLOCKS.push([3.6 - 0.4, 3.6 + 0.4, TERM.z0 + 2.4 - 0.3, TERM.z0 + 2.4 + 0.3]);
+  window.autoLoadButton = btn;
+})();
+function autoLoad() {
+  const b = boarding(), need = BAGS_NEEDED - b.loaded;
+  if (need <= 0) return say('🧳 The cargo bay already has all the bags it needs!', 'good');
+  // free spots on the cargo bay floor
+  const spots = [];
+  for (const z of [8.0, 9.3, 10.6]) for (const x of [-2.2, -1.1, 0, 1.1, 2.2]) if (!items.some(i => i.state !== 'gone' && Math.hypot(i.x - x, i.z - z) < 0.5)) spots.push([x, z]);
+  const pc = { x: BELT_X - 1.6, z: BELT_END - 2.2 };
+  const pool = items.filter(i => !i.extra && !i.type.cage && i.type !== BAGS.nuke && !i.type.floaty && ['pile', 'free', 'ride'].includes(i.state) && !insideHull(i.x, i.z))
+    .sort((a, b) => Math.hypot(a.x - pc.x, a.z - pc.z) - Math.hypot(b.x - pc.x, b.z - pc.z));
+  const n = Math.min(need, pool.length, spots.length);
+  if (!n) return say('🧳 AUTO LOAD: no bags left to load (or no room in the cargo bay).', 'bad');
+  for (let k = 0; k < n; k++) {
+    const it = pool[k], [x, z] = spots[k];
+    if (it.state === 'ride') freeSlot(it);
+    it.state = 'auto'; it.auto = { fx: it.x, fy: it.y, fz: it.z, tx: x, tz: z, t: -k * 0.18, dur: 1.8 };
+  }
+  autoLoadButton.position.y = 1.04; setTimeout(() => { autoLoadButton.position.y = 1.08; }, 300);
+  beep(440, .1, 'square', .05); setTimeout(() => sweep(300, 900, 0.6, 'triangle', 0.04), 120);
+  say(`🤖 AUTO LOAD: ${n} bag${n > 1 ? 's' : ''} flying into the cargo bay!`, 'good');
+}
+// (host) bags on their way: up, over, and down into the plane
+function autoLoadFly(it, dt) {
+  const a = it.auto; a.t += dt;
+  if (a.t < 0) return;
+  const k = Math.min(1, a.t / a.dur), e = k * k * (3 - 2 * k);
+  it.x = a.fx + (a.tx - a.fx) * e; it.z = a.fz + (a.tz - a.fz) * e;
+  it.y = a.fy + (0 - a.fy) * e + Math.sin(Math.PI * k) * 9;
+  it.spinY += dt * 6; it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
+  if (k >= 1) { it.state = 'free'; it.y = 0; it.vx = it.vy = it.vz = 0; it.auto = null; beep(260, .06, 'triangle', .04); }
 }

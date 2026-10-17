@@ -22,7 +22,7 @@ function driverSeat(g, x, z, mat) {
   box(0.12, 0.45, 0.12, M.steel, x, VFLOOR + 0.2, z, g);
 }
 
-function makeVehicle(kind, x, z) {
+function makeVehicle(kind, x, z, opts = {}) {
   const g = new THREE.Group(); airport.add(g);
   const v = { kind, g, x, z, h: 0, v: 0, slots: [], seats: [], wheels: [], floor: VFLOOR };
   const wheel = (wx, wz, r) => { const w = cyl(r, r, 0.3, M.dark, wx, GROUND + r, wz, g); w.rotation.z = Math.PI / 2; v.wheels.push(w); };
@@ -34,7 +34,7 @@ function makeVehicle(kind, x, z) {
       zones: [[-0.55, 0.55, -1.1, 0.68, 'bed']],                              // hop onto the bed to ride along
       bed: { x0: -0.55, x1: 0.55, z0: -1.05, z1: 0.7 },
       solidTop: l => l.z > 0.68 ? GROUND + 1.25 : v.bedTop });
-    const col = TROLLEY.color, stand = new THREE.Group(); g.add(stand); v.standIn = stand;
+    const col = opts.paint || TROLLEY.color, stand = new THREE.Group(); g.add(stand); v.standIn = stand; v.paint = col;
     box(1.15, 0.08, 1.8, col, 0, GROUND + 0.25, -0.2, stand);
     for (const s of [-1, 1]) box(0.05, 0.08, 1.8, col, s * 0.55, GROUND + 0.32, -0.2, stand);
     for (const s of [-1, 1]) box(0.08, 1.0, 0.08, col, s * 0.52, GROUND + 0.75, 0.9, stand);
@@ -44,6 +44,14 @@ function makeVehicle(kind, x, z) {
     // grab the handle (E) to push it
     const hit = box(1.2, 0.5, 0.5, M.hit, 0, GROUND + 1.05, 0.95, g);
     hit.userData.drive = v; targets.push(hit);
+    // the nuke's own trolley has a DETONATOR on its handle: one big red button
+    if (opts.detonator) {
+      box(0.34, 0.14, 0.22, M.yellow, 0, GROUND + 1.36, 0.9, g);
+      for (let k = 0; k < 4; k++) box(0.05, 0.145, 0.225, M.dark, -0.12 + k * 0.08, GROUND + 1.36, 0.9, g);
+      v.button = cyl(0.09, 0.1, 0.07, std(0xff1a1a, { emissive: 0x440000 }), 0, GROUND + 1.47, 0.9, g);
+      textPlane(0.62, 0.16, '☢ DETONATOR ☢', '#ffd400', '#111', g, 0, GROUND + 1.0, 1.06, 0, 'bold 40px sans-serif');
+      const hit = box(0.55, 0.55, 0.45, M.hit, 0, GROUND + 1.42, 0.9, g); hit.userData.detonator = v; targets.push(hit);
+    }
     // room for just three bags, loaded and unloaded by hand
     for (const [lx, lz] of [[-0.27, -0.55], [0.27, -0.55], [0, 0.2]]) v.slots.push({ x: lx, z: lz, k: 0, item: null, v });
     v.whole = { x: 0, z: -0.15, k: 0, item: null, v };                       // big things (the caged crocodile…) take the lot
@@ -104,7 +112,9 @@ function makeVehicle(kind, x, z) {
 }
 function syncVehicle(v) { v.g.position.set(v.x, 0, v.z); v.g.rotation.y = v.h; }
 // a few trolleys, so everybody in a multiplayer game can push one
-const trolleys = [makeVehicle('trolley', 5, 76), makeVehicle('trolley', 6.8, 76), makeVehicle('trolley', 8.6, 76)];
+// (and one more, painted danger-red, that the nuke rides on: see BAGS.nuke)
+const nukeTrolley = makeVehicle('trolley', 3.1, 76, { paint: std(0xd8342c, { roughness: .45, metalness: .3 }), detonator: true });
+const trolleys = [makeVehicle('trolley', 5, 76), makeVehicle('trolley', 6.8, 76), makeVehicle('trolley', 8.6, 76), nukeTrolley];
 const trolleyLoad = v => [...v.slots, v.whole].filter(s => s.item).length;
 const bus = makeVehicle('bus', -7, 76);
 function toggleBusDoor(v) { v.door.target = v.door.target ? 0 : 1; beep(v.door.target ? 520 : 380, .25, 'triangle', .06); }

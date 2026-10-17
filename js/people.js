@@ -152,7 +152,8 @@ const BAGS = {
     for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 10), mat(new THREE.Color().setHSL(k / 4, 0.8, 0.55))); c.position.set(-0.15 + k * 0.1, 0.42, 0); c.rotation.x = Math.PI; g.add(c); }
   } },
   // a cartoon nuke. Don't press the button. (Someone will press the button.)
-  nuke: { name: 'nuke', r: 0.45, loose: true, build: g => {
+  nuke: { name: 'nuke', r: 0.8, whole: true, build: outer => {
+    const g = new THREE.Group(); g.scale.setScalar(1.8); outer.add(g); outer.userData = g.userData;   // a BIG one
     const body = mat(0x4a5a3a, { metalness: .4, roughness: .5 });
     sph(0.36, body, 0, 0.4, 0, g, [1, 1, 1.35]);
     const nose = sph(0.2, body, 0, 0.4, -0.42, g);
@@ -491,6 +492,10 @@ const PAX_COUNT = 20, PAX_NEEDED = 8;
     'backpack', 'briefcase', 'suitcase', 'backpack', 'suitcase', 'briefcase', 'backpack', 'suitcase'];
   for (const k of [...MANIFEST, ...spare, 'beachball', 'boombox', 'balloons', 'pizza', 'cat', 'mystery', 'popper', 'nuke']) spawnBag(BAGS[k]);
   buildPile();
+  // the nuke starts out sitting on its own (red) trolley, by the others
+  const nk = items.find(i => i.type === BAGS.nuke), w = nukeTrolley.whole;
+  w.z = -0.62;   // (well forward, so it doesn't cover the DETONATOR on the handle)
+  w.item = nk; nk.slot = w; nk.state = 'ride'; nk.y = nukeTrolley.bedTop; nk.g.visible = true;
 })();
 const BAGS_NEEDED = 12;
 // stack the bags into a heap: a wide bottom layer, smaller layers on top. Each bag remembers the ones it's
