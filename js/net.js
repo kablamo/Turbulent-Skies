@@ -71,7 +71,7 @@ if (NET.mode === 'host') {
 // They look like passengers (with captain hats and name tags). Look at one and press E to pick them up.
 const avatars = {};
 function makeAvatar(name, id) {
-  const a = makePassenger(name);
+  const a = makePassenger(name, true);
   a.g.traverse(o => { if (o.isMesh) { delete o.userData.passenger; o.userData.playerId = id; } });
   // a pilot's uniform: white shirt, navy trousers, black shoes (and a captain's hat)
   a.mats.shirt.color.set(0xf2f4f8); a.mats.pants.color.set(0x1d2a4a); a.mats.shoes.color.set(0x151515);
@@ -108,12 +108,38 @@ function poseAvatar(a, d, dt) {
   const actLen = a.act === 'pickup' ? PICK_T + 0.1 : 0.45;
   a.pickK = Math.sin(Math.PI * clamp(a.actT / actLen, 0, 1));
   a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.moving ? 'walk' : 'stand';
-  lerpTo(a.g.position, d.x, d.y, d.z, dt);
-  a.g.rotation.set(0, d.yaw, 0);
+  if (a.isMe) a.g.position.set(d.x, d.y, d.z); else lerpTo(a.g.position, d.x, d.y, d.z, dt);
+  // your body swings round to face the new way, a little behind
+  a.g.rotation.set(0, a.isMe ? d.yaw : turnToward(a.g.rotation.y, d.yaw, 12 * dt), 0);
+  wobble(a, dt);
   // thrown: tumbling through the air
   if (d.air) { a.spinT = (a.spinT || 0) + dt; a.pose = 'flail'; a.rig.core.rotation.set(a.spinT * 7, 0, a.spinT * 4); }
-  else { a.spinT = 0; a.rig.core.rotation.set(a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0, 0, 0); }   // lean in
+  else { a.spinT = 0; a.rig.core.rotation.set((a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0) - a.lf, 0, -a.ls); }   // lean in (plus the wobble)
+  a.rig.head.rotation.z = a.ls * 0.8;
   animatePax(a);
+}
+// Wobbly bodies (a bit like Wobbly Life / Human Fall Flat): everyone leans into speeding up, slowing down
+// and turning, on springs, so they overshoot and wobble back; the arms flop about the same way.
+function wobble(a, dt) {
+  dt = Math.max(dt, 1e-3);
+  const p = a.g.position, jumped = a.wpx === undefined || Math.hypot(p.x - a.wpx, p.z - a.wpz) > 1;   // (teleports don't count)
+  const vx = jumped ? (a.svx || 0) : (p.x - a.wpx) / dt, vz = jumped ? (a.svz || 0) : (p.z - a.wpz) / dt;
+  a.wpx = p.x; a.wpz = p.z;
+  const k = Math.min(1, dt * 10);
+  const svx = (a.svx || 0) + (vx - (a.svx || 0)) * k, svz = (a.svz || 0) + (vz - (a.svz || 0)) * k;
+  const ax = (svx - (a.svx || 0)) / dt, az = (svz - (a.svz || 0)) / dt;
+  a.svx = svx; a.svz = svz;
+  const yaw = a.g.rotation.y, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  const fwdSpeed = svx * fx + svz * fz, fwdAcc = ax * fx + az * fz, sideAcc = ax * rx + az * rz;
+  const spring = (key, target, stiff, damp) => {
+    const v = (a[key + 'v'] || 0) + ((target - (a[key] || 0)) * stiff - (a[key + 'v'] || 0) * damp) * dt;
+    a[key + 'v'] = v; a[key] = (a[key] || 0) + v * dt;
+  };
+  const waddle = Math.sin((a.walkT || 0) * 8) * clamp(Math.abs(fwdSpeed) / 3, 0, 1) * 0.09;
+  spring('lf', clamp(fwdAcc * 0.05 + fwdSpeed * 0.04, -0.45, 0.45), 90, 7);   // forward/back lean
+  spring('ls', clamp(sideAcc * 0.04 + waddle, -0.35, 0.35), 80, 6);           // side lean (and a waddle)
+  spring('fl', clamp(-fwdAcc * 0.1, -1.0, 1.0), 55, 4);                       // floppy arms
+  a.flop = a.fl; a.flopS = -a.ls * 0.8;
 }
 // the host shows remote players; everyone else shows whoever's in the snapshot except themselves
 function updateAvatars(dt) {
@@ -161,7 +187,7 @@ function hostOnData(r, m) {
       break;
     case 'me':
       if (!r.driving && S.pilotRP !== r && !r.carriedBy) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
-      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.pose.face = m.face; r.pose.tp = m.tp; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
       break;
     case 'act': {
       const ud = hostRef(m.ref); if (!ud) return;
@@ -201,6 +227,9 @@ function netShoveBags(dt) {
   }
 }
 function heldRef(o) { return !o ? null : o.kind === 'pax' ? ['pax', passengers.indexOf(o)] : ['item', items.indexOf(o)]; }
+// which way someone's body faces (in third person that's where they're walking, not where they look)
+const bodyYaw = who => who.isLocal ? P.face : (who.pose.face ?? who.pose.yaw);
+const isThird = who => who.isLocal ? S.view === 'third' : !!who.pose.tp;
 // where each player's body should be drawn (sitting at the wheel / in the cockpit when driving / flying, or walking behind the trolley)
 function playerPose(who) {
   const v = who.isLocal ? S.driving : who.driving, flying = who.isLocal ? S.flying : S.pilotRP === who;
@@ -208,7 +237,7 @@ function playerPose(who) {
     air: who.isLocal ? !!P.launched : !!who.air, held: !!who.held };
   if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z, yaw: v.h, seat: !v.push, push: !!v.push, ...extra }; }
   if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
-  const yaw = who.carriedBy ? who.carriedBy.pose.yaw : who.pose.yaw;
+  const yaw = who.carriedBy ? bodyYaw(who.carriedBy) : bodyYaw(who);
   // sitting in a vehicle seat (your own y is lowered for the camera; report the floor)
   if (who.isLocal && P.sitV) return { x: P.x, y: P.sitV.floor, z: P.z, yaw, seat: true, ...extra };
   return { x: who.pose.x, y: who.pose.y, z: who.pose.z, yaw, seat: !!who.sit, ...extra };
@@ -235,7 +264,7 @@ function buildSnap() {
     hole: hole.seg ? [segments.indexOf(hole.seg), hole.side] : null, segs: segBits,
     dr: [doors.L.target, doors.R.target, doors.L.open, doors.R.open, lavDoors.L.target, lavDoors.R.target, lavDoors.L.open, lavDoors.R.open, ramp.target, ramp.open, bus.door.target, bus.door.open].map(r2),
     V: vehicles.map(v => [r2(v.x), r2(v.z), Math.round(v.h * 1000) / 1000]),
-    I: items.map(it => [r2(it.g.position.x), r2(it.g.position.y), r2(it.g.position.z), r2(it.g.rotation.y), it.state, it.g.visible ? 1 : 0, it.type === BAGS.egg ? 1 : 0]),
+    I: items.map(it => [r2(it.g.position.x), r2(it.g.position.y), r2(it.g.position.z), r2(it.g.rotation.y), it.state, it.g.visible ? 1 : 0, it.type === BAGS.egg ? 1 : 0, it.caged ? 1 : 0]),
     X: passengers.map(p => [r2(p.g.position.x), r2(p.g.position.y), r2(p.g.position.z), r2(p.g.rotation.y), r2(p.rig.core.rotation.x), r2(p.rig.core.rotation.z),
       p.pose, r2(p.walkT), p.state, p.bubble && p.bubble.visible ? p.bubbleText : '', r2(p.mood), p.calling ? p.calling.text : null, p.seat ? seats.indexOf(p.seat) : -1, p.angry > 0 ? 1 : 0]),
     pl: players, movie: r2(movieT), ev: NET.events.splice(0),
@@ -309,9 +338,10 @@ function applySnap(m) {
   });
   // luggage (new eggs appear as the chicken lays them)
   while (items.length < m.I.length) spawnBag(BAGS.egg);
-  m.I.forEach(([x, y, z, ry, state, vis], i) => {
+  m.I.forEach(([x, y, z, ry, state, vis, egg, caged], i) => {
     const it = items[i];
     if (it.state === 'gone') return;
+    if (it.g.userData.cage) { it.caged = !!caged; it.g.userData.cage.visible = !!caged; }
     it.net = { x, y, z, ry }; it.state = state; it.g.visible = !!vis;
     if (!it.placed) { it.g.position.set(x, y, z); it.placed = true; }
   });
@@ -432,7 +462,7 @@ function wriggle(t) {
 function smoothPose(who) {
   if (who.isLocal) return who.pose;
   const g = who.avatar.g.position;
-  return { x: g.x, y: g.y, z: g.z, yaw: who.pose.yaw, pitch: who.pose.pitch || 0 };
+  return { x: g.x, y: g.y, z: g.z, yaw: bodyYaw(who), pitch: isThird(who) ? -0.15 : who.pose.pitch || 0 };
 }
 // host: keep carried players in their carrier's arms, and drop them if the carrier gets busy
 function hostCarry() {
@@ -465,7 +495,7 @@ function netUpdate(dt) {
   if (NET.mode === 'client') {
     const k = {};
     for (const key of ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']) if (keys[key]) k[key] = true;
-    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), keys: k, air: !!P.launched, seat: !!P.sitV });
+    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), face: r2(P.face), tp: S.view === 'third' ? 1 : 0, keys: k, air: !!P.launched, seat: !!P.sitV });
   }
 }
 // the host keeps sending snapshots even before it clicks "Start playing"

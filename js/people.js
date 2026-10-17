@@ -19,7 +19,7 @@ const BAGS = {
     const c = mat(pick([0x5a3a22, 0x222222, 0x8a5a2b, 0xb03030, 0x2f4f8f])); g.userData.tint = c.color;
     box(0.6, 0.16, 0.62, c, 0, 0.08, 0, g); box(0.2, 0.05, 0.04, M.dark, 0, 0.18, -0.25, g);
   } },
-  duck: { name: 'giant rubber duck', r: 0.42, build: g => {
+  duck: { name: 'giant rubber duck', r: 0.42, whole: true, build: g => {
     const y = mat(0xffd21a, { roughness: .3 });
     sph(0.38, y, 0, 0.36, 0.05, g, [1, 0.8, 1.2]); sph(0.22, y, 0, 0.78, -0.2, g);
     box(0.18, 0.06, 0.18, mat(0xff7a1a), 0, 0.74, -0.42, g);
@@ -50,7 +50,7 @@ const BAGS = {
     box(0.4, 0.4, 0.5, M.porcelain, 0, 0.2, 0, g); box(0.44, 0.05, 0.52, M.white, 0, 0.43, 0, g);
     box(0.42, 0.45, 0.16, M.porcelain, 0, 0.6, 0.25, g); box(0.1, 0.03, 0.05, M.steel, 0.12, 0.82, 0.22, g);
   } },
-  moose: { name: 'stuffed moose head', r: 0.4, build: g => {
+  moose: { name: 'stuffed moose head', r: 0.4, whole: true, build: g => {
     box(0.5, 0.6, 0.06, M.wood, 0, 0.45, 0.2, g);
     const brown = mat(0x6b4423);
     box(0.28, 0.32, 0.4, brown, 0, 0.45, -0.05, g); box(0.2, 0.18, 0.25, brown, 0, 0.36, -0.3, g);
@@ -65,7 +65,7 @@ const BAGS = {
     box(0.56, 0.3, 0.31, std(0x3a8fd8, { transparent: true, opacity: .5 }), 0, 0.17, 0, g);
     const f = new THREE.Sprite(emojiMat('🐠')); f.scale.set(0.2, 0.2, 1); f.position.set(0, 0.2, 0); g.add(f); g.userData.fish = f;
   } },
-  croc: { name: 'crocodile', r: 0.6, alive: { speed: 0.5, kind: 'croc' }, build: g => {
+  croc: { name: 'crocodile', r: 0.6, whole: true, cage: true, alive: { speed: 0.5, kind: 'croc' }, build: g => {
     const green = mat(0x3f7a35), belly = mat(0x9ab35a);
     box(0.45, 0.2, 1.0, green, 0, 0.16, 0, g); box(0.38, 0.06, 0.9, belly, 0, 0.06, 0, g);
     box(0.3, 0.13, 0.45, green, 0, 0.17, -0.68, g);                     // head + upper jaw
@@ -78,6 +78,14 @@ const BAGS = {
     for (let i = 0; i < 6; i++) box(0.06, 0.06, 0.06, green, 0, 0.29, -0.4 + i * 0.16, g);   // spiky back
     for (const [x, z] of [[-0.25, -0.35], [0.25, -0.35], [-0.25, 0.35], [0.25, 0.35]]) box(0.1, 0.1, 0.12, green, x, 0.05, z, g);
     g.userData.jaw = jaw; g.userData.tail = tail;
+    // a travel cage (he will get out of it eventually)
+    const cage = new THREE.Group(); g.add(cage); g.userData.cage = cage;
+    const bar = M.steel, base = mat(0x6b5a3a);
+    box(0.78, 0.05, 2.1, base, 0, 0.025, 0, cage);
+    for (const y of [0.05, 0.62]) for (const s of [-1, 1]) box(0.04, 0.04, 2.1, bar, s * 0.37, y, 0, cage);
+    for (let i = 0; i <= 8; i++) { const z = -1.03 + i * 2.06 / 8; for (const s of [-1, 1]) box(0.03, 0.6, 0.03, bar, s * 0.37, 0.34, z, cage); box(0.74, 0.03, 0.03, bar, 0, 0.62, z, cage); }
+    for (const z of [-1.03, 1.03]) for (let k = 0; k < 5; k++) box(0.03, 0.6, 0.03, bar, -0.3 + k * 0.15, 0.34, z, cage);
+    textPlane(0.5, 0.16, 'DO NOT OPEN', '#ffdd33', '#222', cage, 0.39, 0.42, 0, Math.PI / 2, 'bold 40px sans-serif');
   } },
   chicken: { name: 'chicken', r: 0.2, alive: { speed: 1.2, kind: 'chicken' }, build: g => {
     sph(0.16, M.white, 0, 0.26, 0, g, [1, 0.9, 1.25]);
@@ -103,7 +111,7 @@ function spawnBag(type) {
   const g = new THREE.Group();
   type.build(g); plane.add(g); g.visible = false;
   const it = { kind: 'bag', type, name: type.name, alive: type.alive, extra: type.extra, g, x: BELT_X, y: BELT_Y, z: BELT_START, vx: 0, vy: 0, vz: 0, r: type.r,
-    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), h: bagBox(g).max.y, hw: (bagBox(g).max.x - bagBox(g).min.x) / 2 };
+    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), caged: !!type.cage, h: bagBox(g).max.y, hw: (bagBox(g).max.x - bagBox(g).min.x) / 2 };
   g.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
   items.push(it);
   return it;
@@ -122,7 +130,7 @@ function limb(len, r0, r1, mat, parent, x, y, z) {
 }
 // A round, jointed, slightly ridiculous person. g sits at their feet and holds their facing;
 // `core` is a pivot in the middle of the body so they can tumble and lie down.
-function makePassenger(name) {
+function makePassenger(name, plain) {
   const skin = mat(pick([0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac]));
   const shirt = mat(new THREE.Color().setHSL(Math.random(), 0.7, 0.55));
   const pants = mat(new THREE.Color().setHSL(Math.random(), 0.45, 0.35));
@@ -192,6 +200,7 @@ function makePassenger(name) {
   const acc = [];
   if (Math.random() < 0.8) acc.push(pick(ACCESSORIES));
   if (Math.random() < 0.35) { const b = pick(ACCESSORIES); if (!acc.includes(b) && !(ON_BACK.includes(b) && acc.some(a => ON_BACK.includes(a)))) acc.push(b); }
+  if (plain) acc.length = 0;   // pilots travel light
   const accCol = new THREE.Color().setHSL(Math.random(), 0.75, 0.5);
   buildAccessories(hips, acc, PROC_BODY, accCol);
   if (acc.includes('balloon')) buildBalloon(core, accCol);
@@ -258,6 +267,7 @@ function buildBalloon(core, col) {
 // put the limbs (and the googly eyes) where the current pose wants them
 function animatePax(p) {
   const r = p.rig, t = S.t + p.phase;
+  if (p.pose === 'frozen') { if (p.model) poseModel(p); return; }   // a ragdoll stays the way it landed
   let hy = -0.12, th = [0, 0], sh = [0, 0], ar = [0, 0], fo = [0.1, 0.1], az = [0.12, 0.12], tz = [0.04, 0.04];
   switch (p.pose) {
     case 'sit': hy = -0.33; th = [1.45, 1.45]; sh = [-1.45, -1.45]; ar = [0.35, 0.35]; fo = [0.9, 0.9]; tz = [0.1, 0.1]; break;
@@ -297,11 +307,12 @@ function animatePax(p) {
     default: ar = [Math.sin(t * 1.3) * 0.05, -Math.sin(t * 1.3) * 0.05];   // standing, breathing
   }
   r.hips.position.y = hy;
+  const fl = p.pose === 'walk' || p.pose === 'stand' ? (p.flop || 0) : 0, flS = p.flopS || 0;   // wobbly arms
   for (let i = 0; i < 2; i++) {
     const s = i ? 1 : -1;
     r.thigh[i].rotation.set(th[i], 0, s * tz[i]);
     r.shin[i].rotation.x = sh[i];
-    r.arm[i].rotation.set(ar[i], 0, s * az[i]);
+    r.arm[i].rotation.set(ar[i] + fl, 0, s * az[i] + flS);
     r.fore[i].rotation.x = fo[i];
   }
   const wild = p.pose === 'flail' || p.pose === 'held' ? 0.026 : 0.01;
@@ -387,12 +398,12 @@ function throwHeld(strength, who = LOCAL) {
   // putting something down: it goes down right where you were holding it
   const hx = o.g.position.x, hz = o.g.position.z, hy = o.g.position.y;
   if (strength <= 2 && o.kind !== 'pax') {
-    // next to the trolley? it goes on the trolley (if there's room)
-    const b = trolley.bed, l = vehLocal(trolley, hx, hz);
-    if (S.phase === 'airport' && l.x > b.x0 - 0.6 && l.x < b.x1 + 0.6 && l.z > b.z0 - 0.6 && l.z < b.z1 + 0.4) {
-      const slot = freeTrolleySlot(trolley);
-      if (slot) { slot.item = o; o.slot = slot; o.state = 'ride'; o.y = Math.max(hy, slotY(trolley, slot)); beep(380, .08, 'triangle', .05); return; }
-      say(`The trolley is full (${trolley.slots.length} bags)! Take this lot to the plane first.`, 'bad');
+    // next to a trolley? it goes on the trolley (if there's room)
+    const v = S.phase === 'airport' && trolleyNear(hx, hz);
+    if (v) {
+      const slot = trolleySpot(v, o);
+      if (slot) { slot.item = o; o.slot = slot; o.state = 'ride'; o.y = Math.max(hy, slotY(v, slot)); beep(380, .08, 'triangle', .05); return; }
+      say(trolleyFullMsg(v, o), 'bad');
     }
     if (canGo(pp.x, pp.z, Math.max(hy, pp.y), hx, hz)) { o.x = hx; o.z = hz; o.y = Math.max(hy, pp.y + 0.3); }
   }
@@ -401,23 +412,24 @@ function throwHeld(strength, who = LOCAL) {
   if (o.kind === 'pax') {
     if (strength > 2) ragdoll(o, vx, vy, vz);
     else { o.state = 'air'; o.pose = 'stand'; o.vx = vx; o.vy = vy; o.vz = vz; o.spin = { x: 0, z: 0 }; o.rig.core.rotation.set(0, 0, 0); }
-  } else { o.state = 'free'; o.vx = vx; o.vy = vy; o.vz = vz; }
+  } else { o.state = 'free'; o.vx = vx; o.vy = vy; o.vz = vz; if (o.caged && strength > 2 && Math.random() < 0.5) o.breakOut = 0.6; }   // a hard landing might pop the cage
   if (strength > 2) beep(300, .15, 'triangle', .06);
 }
 function updateHeld() { for (const who of [LOCAL, ...NET.remotes]) holdInFront(who); }
 function holdInFront(who) {
   const o = who.held; if (!o) return;
-  const pp = who.pose, d = lookDir(pp);
+  // in first person things sit in front of your eyes; in third person, in front of your body
+  const pp = who.pose, third = isThird(who), d = third ? lookDir({ yaw: bodyYaw(who), pitch: -0.15 }) : lookDir(pp), yaw = third ? bodyYaw(who) : pp.yaw;
   // bags are held low in front (bigger ones further out, so you can still see); people lie across your arms
-  const far = o.kind === 'pax' ? 1.0 : 0.55 + o.r * 0.9, low = o.kind === 'pax' ? 0.55 : 0.85;
+  const far = o.kind === 'pax' ? 1.0 : 0.55 + o.r * 0.9, low = o.kind === 'pax' ? 0.55 : third ? 0.62 : 0.85;
   o.g.position.set(pp.x + d.x * far, pp.y + EYE - low + d.y * 0.8, pp.z + d.z * far);
   if (o.kind === 'pax') {
     // carried sideways across your arms, legs dangling
-    o.g.rotation.set(0, pp.yaw, 0);
+    o.g.rotation.set(0, yaw, 0);
     o.rig.core.rotation.set(0, 0, Math.PI / 2);
     o.g.position.y -= 1.0;
     o.pose = 'held'; animatePax(o);
-  } else { o.g.rotation.set(0, pp.yaw, 0); if (o.alive) { const ud = o.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.abs(Math.sin(S.t * 9)) * 0.6; if (ud.wings) ud.wings.forEach((w, i) => w.rotation.z = (i ? -1 : 1) * Math.abs(Math.sin(S.t * 25)) * 1.2); } }
+  } else { o.g.rotation.set(0, yaw, 0); if (o.alive) { const ud = o.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.abs(Math.sin(S.t * 9)) * 0.6; if (ud.wings) ud.wings.forEach((w, i) => w.rotation.z = (i ? -1 : 1) * Math.abs(Math.sin(S.t * 25)) * 1.2); } }
   const k = o.pickFrom ? clamp((S.t - o.pickAt) / PICK_T, 0, 1) : 1;
   if (k < 1) o.g.position.lerpVectors(o.pickFrom, o.g.position, k * k * (3 - 2 * k));
   else o.pickFrom = null;
@@ -446,34 +458,53 @@ function updateConveyor(dt) {
   }
   // bags wait at the end of the belt until someone picks them up and puts them on the trolley
 }
+// the crocodile rattles about in his cage, and sooner or later he gets out
+function crocBreaksOut(it) {
+  it.caged = false; it.g.userData.cage.visible = false;
+  if (it.state === 'held' && it.holder) { it.holder.held = null; it.holder = null; }
+  if (it.state === 'held' || it.state === 'ride') {
+    const a = rand(0, Math.PI * 2);   // he leaps clear
+    freeSlot(it); it.state = 'free'; it.vx = Math.cos(a) * 3.5; it.vz = Math.sin(a) * 3.5; it.vy = 3; it.noCatchT = S.t + 2;
+  }
+  it.wanderT = 0;
+  boing(); say('🐊 The crocodile has broken out of his cage! Everybody stay calm. (Nobody stays calm.)', 'bad');
+  const near = passengers.find(p => p.state !== 'gone' && Math.hypot(p.x - it.x, p.z - it.z) < 5);
+  if (near) shout(near, pick(YELLS.croc));
+}
 function updateItems(dt) {
   if (S.phase === 'airport') updateConveyor(dt);
   for (const it of items) {
+    if (it.caged && it.state !== 'queue' && it.state !== 'belt' && it.state !== 'gone') {
+      if (it.breakOut === undefined) it.breakOut = rand(50, 100);
+      const ud = it.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.max(0, Math.sin(S.t * 4 + it.phase)) * 0.4;
+      if (it.state !== 'held' && Math.random() < dt * 0.4) { it.g.position.x += rand(-0.03, 0.03); it.g.rotation.y += rand(-0.04, 0.04); }   // rattle rattle
+      if ((it.breakOut -= dt) <= 0) crocBreaksOut(it);
+    }
     if (it.state === 'ride') {
-      const p = vehPoint(trolley, it.slot.x, it.slot.z);
+      const tv = it.slot.v, p = vehPoint(tv, it.slot.x, it.slot.z);
       // settle down onto whatever's below (it drops when a bag under it is taken)
-      it.y = Math.max(slotY(trolley, it.slot), it.y - 4 * dt); it.x = p.x; it.z = p.z;
-      it.g.position.set(p.x, it.y, p.z); it.g.rotation.set(0, trolley.h + it.spinY * 0.1, 0);
+      it.y = Math.max(slotY(tv, it.slot), it.y - 4 * dt); it.x = p.x; it.z = p.z;
+      it.g.position.set(p.x, it.y, p.z); it.g.rotation.set(0, tv.h + (it.slot === tv.whole ? 0 : it.spinY * 0.1), 0);
       continue;
     }
     if (it.state !== 'free') continue;
-    // a bag thrown onto the trolley lands on the pile
-    if (S.phase === 'airport' && it.vy <= 0 && it.y < trolley.bedTop + 1.4 && it.y > trolley.bedTop - 0.2) {
-      const l = vehLocal(trolley, it.x, it.z), b = trolley.bed;
-      const slot = l.x > b.x0 - 0.15 && l.x < b.x1 + 0.15 && l.z > b.z0 - 0.15 && l.z < b.z1 + 0.1 && freeTrolleySlot(trolley);
-      if (slot && it.y < slotY(trolley, slot) + 0.3) { slot.item = it; it.slot = slot; it.state = 'ride'; beep(380, .08, 'triangle', .05); continue; }
-      // the trolley's full: the bag tumbles off the side
-      if (!slot && it.y < trolley.bedTop + 0.3 && Math.abs(l.x) < trolley.w && Math.abs(l.z) < trolley.l) {
-        const side = l.x < 0 ? -1 : 1, c = Math.cos(trolley.h), s = Math.sin(trolley.h);
+    // a bag thrown onto a trolley lands on it
+    const tv = S.phase === 'airport' && it.vy <= 0 && !(it.noCatchT > S.t) && trolleyNear(it.x, it.z, 0.15);
+    if (tv && it.y < tv.bedTop + 1.4 && it.y > tv.bedTop - 0.2) {
+      const l = vehLocal(tv, it.x, it.z), slot = trolleySpot(tv, it);
+      if (slot && it.y < slotY(tv, slot) + 0.3) { slot.item = it; it.slot = slot; it.state = 'ride'; beep(380, .08, 'triangle', .05); continue; }
+      // no room: the bag tumbles off the side
+      if (!slot && it.y < tv.bedTop + 0.3 && Math.abs(l.x) < tv.w && Math.abs(l.z) < tv.l) {
+        const side = l.x < 0 ? -1 : 1, c = Math.cos(tv.h), s = Math.sin(tv.h);
         it.vx = side * c * 3; it.vz = -side * s * 3; it.vy = 1.5;
-        if (S.t - (S.fullMsgT || -9) > 3) { S.fullMsgT = S.t; say(`The trolley is full (${trolley.slots.length} bags)! Take this lot to the plane first.`, 'bad'); }
+        if (S.t - (S.fullMsgT || -9) > 3) { S.fullMsgT = S.t; say(trolleyFullMsg(tv, it), 'bad'); }
       }
     }
     cabinForces(it, force);
     it.vx += force.x * dt; it.vz += force.z * dt;
     const grounded = it.y <= (groundAt(it.x, it.z) ?? -99) + 0.03;
     if (grounded) { const fr = Math.max(0, 1 - 3.5 * dt); it.vx *= fr; it.vz *= fr; }
-    if (it.alive) liveCargo(it, dt, grounded);
+    if (it.alive && !it.caged) liveCargo(it, dt, grounded);
     const [hx, hz] = moveBody(it, it.vx * dt, it.vz * dt);
     if (hx) it.vx *= -0.3;
     if (hz) it.vz *= -0.3;
@@ -602,10 +633,36 @@ function landed(p) {
   if (S.phase === 'airport') { p.state = 'terminal'; p.tx = p.x; p.tz = p.z; setPose(p, 'stand'); return; }
   ejectPassenger(p, `🌬 The wind blew ${p.name} right off the plane! A parachute pops open. 🪂`);
 }
+// is someone else standing in the way of a step to (x, z)? (stepping away from them is always fine)
+const ON_FOOT = new Set(['terminal', 'toBus', 'walk', 'wait']);
+function npcAt(p, x, z) {
+  for (const q of passengers) {
+    if (q === p || !ON_FOOT.has(q.state)) continue;
+    const dn = Math.hypot(q.x - x, q.z - z);
+    if (dn < 0.55 && dn < Math.hypot(q.x - p.x, q.z - p.z)) return true;
+  }
+  return false;
+}
 function walkToward(p, tx, tz, speed, dt) {
   const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
   if (d < 0.06) return true;
   const st = Math.min(d, speed * dt);
+  // outdoors, people walk around vehicles, walls and each other instead of through them
+  // (if they're stuck for a few seconds they squeeze past anyway, so nobody waits forever)
+  if (S.phase === 'airport' && !insideHull(p.x, p.z) && !onRamp(p.x, p.z) && !(p.ghostT > 0)) {
+    for (const turn of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6]) {
+      const c = Math.cos(turn), s = Math.sin(turn), ux = (dx * c - dz * s) / d, uz = (dx * s + dz * c) / d;
+      const bx = p.x + ux * st, bz = p.z + uz * st;
+      if (!canGo(p.x, p.z, p.y, bx, bz) || npcAt(p, bx, bz)) continue;
+      p.x = bx; p.z = bz; p.stuckT = 0;
+      p.g.rotation.set(0, Math.atan2(-ux, -uz), 0);
+      p.walkT += dt;
+      return Math.hypot(tx - p.x, tz - p.z) < 0.06;
+    }
+    if ((p.stuckT = (p.stuckT || 0) + dt) > 3) { p.stuckT = 0; p.ghostT = 2; }
+    return false;
+  }
+  if (p.ghostT > 0) p.ghostT -= dt;
   p.x += dx / d * st; p.z += dz / d * st;
   p.g.rotation.set(0, Math.atan2(-dx, -dz), 0);
   p.walkT += dt;
@@ -626,11 +683,13 @@ function stepPassenger(p, dt) {
       p.vx *= 0.8; p.vz *= 0.8; p.spin.x *= 0.7; p.spin.z *= 0.7;
       if (Math.hypot(p.vx, p.vz) < 0.6) {
         if (inAir() && !insideHull(p.x, p.z) && !onRamp(p.x, p.z)) return landed(p);
-        // flop down flat for a moment
+        // flop down and stay exactly the way they landed: arms and legs freeze where they were,
+        // and the body just tips over onto the floor (whichever way is nearest) instead of snapping into a pose
         const wasThrown = !!(p.spin.x || p.spin.z);
-        p.state = 'down'; p.pose = 'down'; p.downT = wasThrown ? rand(1.4, 2.2) : 0.01;
+        p.state = 'down'; p.pose = 'frozen'; p.downT = wasThrown ? rand(2.2, 3.2) : 0.6; p.flopT = 0;
         if (wasThrown) { boing(); shout(p, pick(YELLS.landed)); }
-        core.rotation.set(Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2, 0, rand(-0.3, 0.3));
+        const x = core.rotation.x, lie = Math.PI / 2 + Math.round((x - Math.PI / 2) / Math.PI) * Math.PI;
+        p.lieTo = { x0: x, x1: lie, z: core.rotation.z };
       }
     }
     if (groundAt(p.x, p.z) === null && p.y < -3) return ejectPassenger(p);
@@ -638,8 +697,21 @@ function stepPassenger(p, dt) {
     return;
   }
   if (p.state === 'down') {
-    p.g.position.set(p.x, p.y - 0.6, p.z);
-    if ((p.downT -= dt) <= 0) { p.rig.core.rotation.set(0, 0, 0); p.pose = 'stand'; landed(p); }
+    const f = p.lieTo || { x0: Math.PI / 2, x1: Math.PI / 2, z: 0 }, core = p.rig.core;
+    p.flopT = (p.flopT || 0) + dt;
+    const k = smooth01(clamp(p.flopT / 0.3, 0, 1));                    // tipping over onto the floor
+    core.rotation.set(f.x0 + (f.x1 - f.x0) * k, 0, f.z);
+    p.g.position.set(p.x, p.y - 0.6 * k, p.z);
+    if ((p.downT -= dt) <= 0) { p.state = 'getup'; p.getT = 0; p.pose = 'stand'; p.upFrom = { x: core.rotation.x, z: core.rotation.z }; }
+    return;
+  }
+  if (p.state === 'getup') {
+    // climb back up onto their feet
+    p.getT += dt;
+    const k = smooth01(clamp(p.getT / 0.6, 0, 1)), u = p.upFrom;
+    p.rig.core.rotation.set(u.x * (1 - k), 0, u.z * (1 - k));
+    p.g.position.set(p.x, p.y - 0.6 * (1 - k), p.z);
+    if (k >= 1) { p.rig.core.rotation.set(0, 0, 0); landed(p); }
     return;
   }
   if (p.state === 'terminal') {
@@ -653,8 +725,9 @@ function stepPassenger(p, dt) {
     const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
     p.pose = d > 0.1 ? 'walk' : 'stand';
     if (d > 0.1) {
-      const st = Math.min(d, 1.0 * dt), [hx, hz] = moveBody(p, dx / d * st, dz / d * st);
-      if (hx || hz) p.wanderT = 0;
+      const st = Math.min(d, 1.0 * dt);
+      if (npcAt(p, p.x + dx / d * st, p.z + dz / d * st)) p.wanderT = 0;   // someone's in the way: go somewhere else
+      else { const [hx, hz] = moveBody(p, dx / d * st, dz / d * st); if (hx || hz) p.wanderT = 0; }
       p.g.rotation.set(0, Math.atan2(-dx, -dz), 0); p.walkT += dt;
     }
     fallBody(p, dt);

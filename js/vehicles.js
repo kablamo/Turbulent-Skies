@@ -45,7 +45,8 @@ function makeVehicle(kind, x, z) {
     const hit = box(1.2, 0.5, 0.5, M.hit, 0, GROUND + 1.05, 0.95, g);
     hit.userData.drive = v; targets.push(hit);
     // room for just three bags, loaded and unloaded by hand
-    for (const [lx, lz] of [[-0.27, -0.55], [0.27, -0.55], [0, 0.2]]) v.slots.push({ x: lx, z: lz, k: 0, item: null });
+    for (const [lx, lz] of [[-0.27, -0.55], [0.27, -0.55], [0, 0.2]]) v.slots.push({ x: lx, z: lz, k: 0, item: null, v });
+    v.whole = { x: 0, z: -0.15, k: 0, item: null, v };                       // big things (the caged crocodile…) take the lot
   } else {
     // the shuttle bus: door at the front right, driver front left, a row of seats either side of the aisle
     const white = std(0xf4f4f0, { roughness: .4 }), glass = std(0x223344, { transparent: true, opacity: .4, roughness: .1 });
@@ -102,7 +103,9 @@ function makeVehicle(kind, x, z) {
   return v;
 }
 function syncVehicle(v) { v.g.position.set(v.x, 0, v.z); v.g.rotation.y = v.h; }
-const trolley = makeVehicle('trolley', 5, 76);
+// a few trolleys, so everybody in a multiplayer game can push one
+const trolleys = [makeVehicle('trolley', 5, 76), makeVehicle('trolley', 6.8, 76), makeVehicle('trolley', 8.6, 76)];
+const trolleyLoad = v => [...v.slots, v.whole].filter(s => s.item).length;
 const bus = makeVehicle('bus', -7, 76);
 function toggleBusDoor(v) { v.door.target = v.door.target ? 0 : 1; beep(v.door.target ? 520 : 380, .25, 'triangle', .06); }
 const busDoorOpen = () => bus.door.open > 0.9;
@@ -179,6 +182,22 @@ function freeTrolleySlot(v) {
   }
   return best;
 }
+// where a bag can go on this trolley (or null): the big things need the whole trolley to themselves
+function trolleySpot(v, it) {
+  if (it.type.whole) return trolleyLoad(v) ? null : v.whole;
+  return v.whole.item ? null : freeTrolleySlot(v);
+}
+const trolleyFullMsg = (v, it) => v.whole.item ? `The ${v.whole.item.name} is taking up the whole trolley! Use another one.`
+  : it.type.whole ? `The ${it.name} needs a whole trolley to itself. Empty this one or grab another.` : `This trolley is full (${v.slots.length} bags)! Take this lot to the plane first, or use another trolley.`;
+// the trolley nearest to a spot, if it's close enough to put things on (in its own coordinates, with some slack)
+function trolleyNear(x, z, slack = 0.6) {
+  let best = null, bd = 1e9;
+  for (const v of trolleys) {
+    const l = vehLocal(v, x, z), b = v.bed;
+    if (l.x > b.x0 - slack && l.x < b.x1 + slack && l.z > b.z0 - slack && l.z < b.z1 + slack * 0.7) { const d = Math.hypot(l.x, l.z); if (d < bd) { bd = d; best = v; } }
+  }
+  return best;
+}
 function busDoor(v, out = 0.5) { return vehPoint(v, v.w + out, -3.1); }
 // sitting in a vehicle as a passenger (only on your own screen; others see you sit)
 function sitInVehicle(v, s) {
@@ -208,7 +227,7 @@ function rideVehicles() {
 function vehicleAction(v) {
   if (v.push) {
     // no automatic unloading: push it to the cargo ramp, let go, and carry the bags in yourself
-    const bags = v.slots.filter(s => s.item).length;
+    const bags = trolleyLoad(v);
     if (!bags) return say(`The trolley is empty. Push it to the conveyor, pick bags off the belt (E) and put them on it (Q). It holds ${v.slots.length}.`);
     return say(`${bags} bag${bags > 1 ? 's' : ''} on the trolley. Push it to the cargo ramp, let go (E), and carry them up the ramp into the cargo bay.`);
   }

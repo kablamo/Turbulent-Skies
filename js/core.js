@@ -233,7 +233,7 @@ function station(id, name, area, mesh, extra = {}) {
 
 // ---------------------------------------------------------------- game state
 const S = {
-  running: false, paused: false, over: false, phase: 'airport', t: 0, dist: 0, integrity: 100, seatbelt: false, flying: false, driving: null,
+  running: false, paused: false, over: false, view: 'third', phase: 'airport', t: 0, dist: 0, integrity: 100, seatbelt: false, flying: false, driving: null,
   toT: 0, toSpeed: 0, liftoff: false, alt: 0, pitch: 0,
   turb: 0, flash: 0, shake: 0, roll: 0, gust: 0, gustT: 0,
   needs: { calm: 90, hunger: 85, bored: 85, comfort: 85 },
@@ -242,7 +242,10 @@ const S = {
   beltSpawnT: 0.5, beltLoadT: 0,
   alarmT: 0, complainT: 12, hudT: 0, lowHapT: 0, fixed: 0, falls: 0, ejected: 0, lostBags: 0, uid: 0,
 };
-const P = { x: 0, y: GROUND, z: TERM.z0 + 4.5, vy: 0, yaw: 0, pitch: -0.02, falling: false, fallT: 0, vz: 0, vx: 0, walkT: 0 };
+// yaw/pitch are where you look (and aim); face is which way your body points; mvx/mvz is how fast you're walking
+const P = { x: 0, y: GROUND, z: TERM.z0 + 4.5, vy: 0, yaw: 0, pitch: -0.02, face: 0, mvx: 0, mvz: 0, falling: false, fallT: 0, vz: 0, vx: 0, walkT: 0 };
+// turn angle a toward b by at most step (the short way round)
+const turnToward = (a, b, step) => { const d = Math.atan2(Math.sin(b - a), Math.cos(b - a)); return a + clamp(d, -step, step); };
 const PW = { x: 0, y: 0, vx: 0, vy: 0 };   // the plane's position in the sky (steering moves it)
 const inAir = () => S.phase === 'flight' || S.phase === 'landing';
 // you (on this computer) as someone who can carry things; remote players have the same shape

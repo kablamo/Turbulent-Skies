@@ -265,8 +265,12 @@ function reskinBag(it) {
   it.h = proto.userData.h; it.hw = proto.userData.hw; it.r = proto.userData.r; it.reskinned = true;
 }
 // the luggage trolley: scaled to fit the game, its colour parts painted, and swapped in for the stand-in boxes
-function prepareTrolley(scene) {
-  const v = trolley, s = TROLLEY.scale;
+function prepareTrolley(src) {
+  const copies = trolleys.map((v, i) => i ? src.clone() : src);   // copy before fitting, so each starts fresh
+  trolleys.forEach((v, i) => fitTrolley(v, copies[i]));
+}
+function fitTrolley(v, scene) {
+  const s = TROLLEY.scale;
   scene.scale.setScalar(s);
   scene.updateMatrixWorld(true);
   const bb = new THREE.Box3().setFromObject(scene), c = bb.getCenter(new THREE.Vector3());

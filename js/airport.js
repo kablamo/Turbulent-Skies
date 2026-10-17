@@ -6,9 +6,10 @@ function buildAirport(group, gateName) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color }));
     m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); group.add(m); return m;
   };
-  flat(6000, 6000, 0x5f8f4e, 0, GROUND - 0.04, 0);
-  flat(140, 150, 0x8c8f94, 0, GROUND - 0.02, 35);
-  flat(46, 3200, 0x3d3f44, 0, GROUND - 0.03, -1560);
+  // (the layers sit well apart, or from a distance the grass flickers through the tarmac)
+  flat(6000, 6000, 0x5f8f4e, 0, GROUND - 0.2, 0);
+  flat(140, 150, 0x8c8f94, 0, GROUND - 0.03, 35);
+  flat(46, 3200, 0x3d3f44, 0, GROUND - 0.08, -1560);
   for (let z = 20; z > -3100; z -= 30) flat(1, 12, 0xffffff, 0, GROUND - 0.01, z);
   for (const x of [-21, 21]) flat(0.6, 3200, 0xffffff, x, GROUND - 0.01, -1560);
   flat(0.4, 60, 0xf2c230, 0, GROUND - 0.01, 50);                  // taxi line from the plane to the gate

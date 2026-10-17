@@ -276,6 +276,7 @@ function update(dt) {
   updatePlayer(dt);
   S.shake = Math.max(0, S.shake - dt * 2);
   const shake = S.turb * 0.05 + S.shake * 0.08;
+  S.camThird = false;
   if (S.driving && S.chase) {
     // chase camera behind the vehicle (toggle with C)
     const v = S.driving, back = v.kind === 'bus' ? 11 : 7.5, up = v.kind === 'bus' ? 5.5 : 4;
@@ -286,6 +287,9 @@ function update(dt) {
     // outside view from behind the plane (toggle with C while flying)
     camera.position.set(rand(-shake, shake), 9, 42);
     camera.lookAt(plane.localToWorld(tmpV.set(0, 1, -25)));
+  } else if (S.view === 'third' && !S.flying && !(S.driving && !S.driving.push)) {
+    // third person: the camera hangs back behind your character (V switches to first person)
+    thirdPersonCam(shake);
   } else if (S.driving) {
     // sitting in the driver's seat (or walking behind the trolley)
     const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z);
@@ -302,12 +306,13 @@ function update(dt) {
   if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); hostCarry(); netShoveBags(dt); chatter(dt); }
   else netAnimate(dt);
   updateAvatars(dt);
+  updateMe(dt);
   interact(dt);
   updateMarkers();
   const tools = heldTools();
   updateFPArms(dt);
-  handItems['🧯'].visible = !S.held && !S.driving && tools.some(i => i.startsWith('🧯'));
-  handItems['🔫'].visible = !S.held && !S.driving && tools.some(i => i.startsWith('🔫'));
+  handItems['🧯'].visible = S.view === 'first' && !S.held && !S.driving && tools.some(i => i.startsWith('🧯'));
+  handItems['🔫'].visible = S.view === 'first' && !S.held && !S.driving && tools.some(i => i.startsWith('🔫'));
   updateEffects(dt, flight);
 
   // --- passengers' needs, win / lose
@@ -359,11 +364,11 @@ function setBar(el, v) {
 function boardingCard() {
   const b = boarding();
   const inTerm = passengers.filter(p => p.state === 'terminal').length, onBus = passengers.filter(p => p.state === 'bus').length;
-  const onBelt = items.filter(i => i.state === 'belt' || i.state === 'queue').length, onTrolley = trolley.slots.filter(s => s.item).length;
+  const onBelt = items.filter(i => i.state === 'belt' || i.state === 'queue').length, onTrolley = trolleys.reduce((n, v) => n + trolleyLoad(v), 0);
   const row = (ok, text, loc) => `<div class="st ${ok ? 'done' : 'cur'}">${ok ? '✓' : '▶'} ${text}${!ok && loc ? `<span class="loc">📍 ${loc}</span>` : ''}</div>`;
   return `<div class="card board"><div class="ct">🛫 BOARDING · FLIGHT 404</div>
     ${row(b.seated === b.pax, `Passengers seated: ${b.seated}/${b.pax}`, `${inTerm} in the terminal · ${onBus} on the bus. Park the bus at the terminal doors and press F, then press F again at the cargo ramp.`)}
-    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTrolley} on the trolley. Pick bags off the belt (E), put them on the luggage trolley (Q, it holds 3), push it to the cargo ramp and carry each bag in by hand.`)}
+    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTrolley} on the trolleys. Pick bags off the belt (E), put them on a luggage trolley (Q, each holds 3; the crocodile, duck and moose need one to themselves), push it to the cargo ramp and carry each bag in by hand.`)}
     ${row(b.rampUp, 'Raise the cargo ramp', 'Cargo bay · yellow panel')}
     ${row(b.doorsShut, 'Exit doors closed', 'Exit row')}
     ${row(false, 'Take off from the captain\'s seat', 'Cockpit · yoke')}</div>`;
@@ -489,7 +494,51 @@ function boardAll() {
   items.forEach((it, i) => { if (it.state !== 'gone') { freeSlot(it); it.g.visible = true; it.state = 'free'; it.x = -2.4 + (i % 4) * 0.9; it.z = 7.4 + Math.floor(i / 4) * 1.1; it.y = 0; it.vx = it.vz = it.vy = 0; } });
   ramp.target = 0;
 }
-window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolley, bus };
+window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolleys, bus };
+
+// ---------------------------------------------------------------- third person
+// The camera sits behind and a little above your head, looking the way you look. Indoors (the cabin, the
+// terminal, the bus) it slides in closer rather than poking through the walls.
+const _eye = new THREE.Vector3(), _cam = new THREE.Vector3(), BOOM = 3.4;
+function camSpotOK(c) {
+  if (insideHull(P.x, P.z)) return insideHull(c.x, c.z) && c.y > 0.25 && c.y < CY + Math.sqrt(Math.max(0, R * R - c.x * c.x)) - 0.35;
+  if (S.phase === 'airport') {
+    if (inTerminal(P.x, P.z)) return inTerminal(c.x, c.z) && c.y > GROUND + 0.3 && c.y < GROUND + 5.4;
+    if (vehicleZoneAt(bus, P.x, P.z)) { const l = vehLocal(bus, c.x, c.z); return Math.abs(l.x) < 1.15 && Math.abs(l.z) < 4.0 && c.y > VFLOOR + 0.3 && c.y < VFLOOR + 2.4; }
+  }
+  const g = groundAt(c.x, c.z);
+  return g === null || c.y > g + 0.3;
+}
+function thirdPersonCam(shake) {
+  const d = lookDir(P);
+  _eye.set(P.x, P.y + EYE - 0.1, P.z);
+  for (let b = BOOM; b > 0.3; b -= 0.15) {
+    // over your right shoulder, so you can see past your own head
+    // (and a bit high, so your character sits low on the screen and their hat isn't in the way)
+    _cam.copy(_eye).addScaledVector(d, -b); _cam.y += 0.75 * b / BOOM;
+    _cam.x += Math.cos(P.yaw) * 0.45 * b / BOOM; _cam.z -= Math.sin(P.yaw) * 0.45 * b / BOOM;
+    if (camSpotOK(_cam)) break;
+  }
+  S.camDist = _cam.distanceTo(_eye); S.camThird = true;
+  camera.position.set(_cam.x + rand(-shake, shake), _cam.y + rand(-shake, shake), _cam.z);
+  camera.rotation.set(P.pitch, P.yaw, 0);
+}
+// your own character (the same pilot everyone else sees), drawn when the camera is outside your head
+let ME = null;
+function updateMe(dt) {
+  if (!ME) {
+    ME = makeAvatar(NET.name, 'me'); ME.isMe = true;
+    ME.g.traverse(o => { const i = targets.indexOf(o); if (i >= 0) targets.splice(i, 1); });   // you can't pick yourself up
+    if (ME.bubble) ME.bubble.visible = false;
+  }
+  const seatCam = (S.driving && !S.driving.push) || S.flying;
+  ME.g.visible = S.chase || (S.view === 'third' && !seatCam);
+  if (!ME.g.visible) return;
+  const d = playerPose(LOCAL);
+  if (P.falling) d.air = true;
+  if (carriedByName()) d.cb = 1;
+  poseAvatar(ME, d, dt);
+}
 
 let last = performance.now(), lastDrawn = last;
 function step(now) {

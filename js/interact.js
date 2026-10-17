@@ -1,6 +1,6 @@
 // Looking at things and pressing E: stations, luggage, passengers, vehicles. Also input and markers.
 'use strict';
-const raycaster = new THREE.Raycaster();
+const raycaster = new THREE.Raycaster(), _eyeW = new THREE.Vector3();
 raycaster.far = 2.7;
 const CENTER = new THREE.Vector2(0, 0);
 const keys = {};
@@ -131,7 +131,7 @@ function interact(dt) {
     S.press = S.drop = S.act = false;
     if (!S.driving) return;
     const v = S.driving;
-    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.slots.filter(s => s.item).length}/${v.slots.length} bags`, true); return; }
+    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.whole.item ? 'the ' + v.whole.item.name : trolleyLoad(v) + '/' + v.slots.length + ' bags'}`, true); return; }
     const extra = ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
     setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>E</kbd>get up${extra}`, true);
     return;
@@ -177,9 +177,23 @@ function interact(dt) {
     return;
   }
   raycaster.setFromCamera(CENTER, camera);
-  const hits = P.falling ? [] : raycaster.intersectObjects(targets, false);
+  // in third person you aim with the camera, but can only reach things near your character
+  const third = S.camThird;
+  raycaster.far = third ? S.camDist + 2.9 : 2.7;
+  if (third) plane.localToWorld(_eyeW.set(P.x, P.y + EYE - 0.3, P.z));
+  const hits = P.falling ? [] : raycaster.intersectObjects(targets, false).filter(h => !third || (h.point.distanceTo(_eyeW) < 2.6 && h.distance > S.camDist * 0.7));
   let act = null, ref = null;
   for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
+  // third person: if the crosshair isn't on anything, try what's just in front of your character
+  if (third && !act && !P.falling) {
+    raycaster.far = 2.4;
+    const dir = new THREE.Vector3(), m3 = new THREE.Matrix3().setFromMatrix4(plane.matrixWorld);
+    sweep: for (const dp of [0, -0.3, -0.6, -0.9, 0.3]) for (const dy of [0, 0.25, -0.25]) {
+      dir.copy(lookDir({ yaw: P.yaw + dy, pitch: clamp(P.pitch + dp, -1.3, 0.8) })).applyMatrix3(m3).normalize();
+      raycaster.set(_eyeW, dir);
+      for (const h of raycaster.intersectObjects(targets, false)) { const a = actionFor(h.object.userData); if (a) { act = a; ref = h.object.userData; break sweep; } }
+    }
+  }
   // on a client the host does the real work; here we only show the prompt and send what you did
   if (act && isClient() && act.type !== 'info' && !act.local) { const r = netRef(ref); act.done = () => netSend({ t: 'act', ref: r }); act.mash = () => netSend({ t: 'act', ref: r, how: 'mash' }); }
   const held = keys.e || mouseDown;
@@ -276,7 +290,7 @@ function updateFPArms(dt) {
   if (holding !== FP.wasHolding) { if (holding) FP.pickT = 0; else FP.throwT = 0; }
   FP.wasHolding = holding; FP.pickT += dt; FP.throwT += dt;
   const throwing = FP.throwT < 0.4;
-  fpArms.visible = (holding || pushing || throwing) && !S.chase && !S.flying;
+  fpArms.visible = S.view === 'first' && (holding || pushing || throwing) && !S.chase && !S.flying;
   if (!fpArms.visible) return;
   // picking something up: you crouch (the camera dips) as your hands reach down for it
   const pk = clamp(FP.pickT / PICK_T, 0, 1), dip = holding ? Math.sin(Math.PI * pk) : 0;
@@ -311,6 +325,7 @@ function keyDown(k, repeat) {
   keys[k] = true;
   if (repeat) return;
   if (k === 'enter' && S.running && !S.over && S.paused) resume();
+  if (k === 'v' && S.running && !S.over) { S.view = S.view === 'third' ? 'first' : 'third'; sayLocal(S.view === 'third' ? '🎥 Third person (V for first person)' : '👀 First person (V for third person)'); }
   if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else showPause(); }
   if ((k === 'h' || k === '?') && S.running && !S.over) { if (S.helpOpen) resume(); else showPause(true); }
   if (k === 'escape' && S.helpOpen) resume();
@@ -379,6 +394,7 @@ function helpHTML() {
       <tr><th colspan="2">Game</th></tr>
       <tr><td>${k_('P')}</td><td>Pause</td></tr>
       <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
+      <tr><td>${k_('V')}</td><td>Switch between third person and first person</td></tr>
       <tr><td>${k_('H')}</td><td>This help screen</td></tr>
     </table></div>`;
   const touch = `<div>

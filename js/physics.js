@@ -167,7 +167,18 @@ function updatePlayer(dt) {
   let mx = -Math.sin(P.yaw) * f + Math.cos(P.yaw) * r;
   let mz = -Math.cos(P.yaw) * f - Math.sin(P.yaw) * r;
   const len = Math.hypot(mx, mz);
-  if (len > 0) { mx = mx / len * sp; mz = mz / len * sp; P.walkT += dt * sp; }
+  if (len > 0) { mx = mx / len * sp; mz = mz / len * sp; }
+  // momentum: you speed up and slow down over a moment, so your character feels heavy and a bit wobbly
+  const gnd = groundAt(P.x, P.z), onGround = gnd !== null && P.y <= gnd + 0.05;
+  const k = Math.min(1, (onGround ? 8 : 2.5) * dt);
+  P.mvx += (mx - P.mvx) * k; P.mvz += (mz - P.mvz) * k;
+  mx = P.mvx; mz = P.mvz;
+  const spd = Math.hypot(mx, mz);
+  P.walkT += dt * spd;
+  // your body turns to face where you're going (in first person it simply faces where you look)
+  if (S.view !== 'third') P.face = P.yaw;
+  else if (spd > 0.4) P.face = turnToward(P.face, Math.atan2(-mx, -mz), 9 * dt);
+  else if (S.held || carryingName()) P.face = turnToward(P.face, P.yaw, 5 * dt);
   if (S.phase !== 'airport') {
     // the wind wants you off the plane; standing still lets you brace against it
     if (!insideHull(P.x, P.z)) { mz += (len > 0 ? 1.3 : 0.2) + S.turb * 2.5; mx += S.gust * (len > 0 ? 1 : 0.4); }
