@@ -233,7 +233,7 @@ function updatePlayer(dt) {
   }
 
   // run into loose luggage and you knock it flying (just walking up to it, you stop at it, so you can grab it)
-  if (Math.hypot(P.mvx, P.mvz) > 3) for (const it of items) {
+  if (Math.hypot(P.mvx, P.mvz) > 4.5) for (const it of items) {
     if (it.state !== 'free' || Math.abs(it.y - P.y) > 0.8) continue;
     const dx = it.x - P.x, dz = it.z - P.z, d = Math.hypot(dx, dz);
     if (d < it.r + 0.35 && d > 0.001) { it.vx += dx / d * 30 * dt; it.vz += dz / d * 30 * dt; }
