@@ -264,6 +264,25 @@ function buildBalloon(core, col) {
   cyl(0.004, 0.004, 1.5, M.white, 0.45, 0.8, 0, core);
   const knot = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.06, 8), b.material); knot.position.set(0.45, 1.46, 0); knot.rotation.x = Math.PI; core.add(knot);
 }
+// Walking legs. Each leg swings forward and back; the knee bends as the leg swings through (lifting the
+// foot) and straightens as it lands, then the foot stays put while the body goes over it.
+function gait(t, A) {
+  const th = [0, 0], sh = [0, 0];
+  for (let i = 0; i < 2; i++) {
+    const q = t * 8 + i * Math.PI;
+    th[i] = Math.sin(q) * 0.55 * A;
+    sh[i] = -(0.05 + 0.95 * Math.max(0, Math.cos(q))) * A;
+  }
+  return [th, sh];
+}
+// move the walk cycle along by a distance walked: bigger strides when going faster, and the cycle is timed
+// so the planted foot moves backwards exactly as fast as the body moves forwards (no skating)
+const LEG = 0.72;
+function stepGait(p, dist, speed) {
+  const A = clamp(0.3 + speed * 0.13, 0.3, 1.0);
+  p.stride = A;
+  p.walkT += dist / (LEG * 2.8 * A);
+}
 // put the limbs (and the googly eyes) where the current pose wants them
 function animatePax(p) {
   const r = p.rig, t = S.t + p.phase;
@@ -272,17 +291,18 @@ function animatePax(p) {
   switch (p.pose) {
     case 'sit': hy = -0.33; th = [1.45, 1.45]; sh = [-1.45, -1.45]; ar = [0.35, 0.35]; fo = [0.9, 0.9]; tz = [0.1, 0.1]; break;
     case 'walk': {
-      const s = Math.sin(p.walkT * 8);
-      th = [s * 0.55, -s * 0.55]; sh = [-Math.max(0, s) * 0.7, -Math.max(0, -s) * 0.7]; ar = [-s * 0.6, s * 0.6]; fo = [0.4, 0.4]; az = [0.2, 0.2];
-      hy += Math.abs(s) * 0.04;                                           // a bouncy waddle
+      const A = p.stride ?? 0.6, s = Math.sin(p.walkT * 8);
+      [th, sh] = gait(p.walkT, A);
+      ar = [-s * 0.6 * A, s * 0.6 * A]; fo = [0.25 + 0.3 * A, 0.25 + 0.3 * A]; az = [0.15, 0.15];
+      hy += (0.5 - Math.abs(s)) * 0.06 * A;                               // up as each leg passes under, down as it lands
       break;
     }
     case 'push': case 'carry': {
       // arms out in front (both hands on the trolley handle, or holding something), legs walking when moving
-      const s = p.moving ? Math.sin(p.walkT * 8) : 0;
-      th = [s * 0.45, -s * 0.45]; sh = [-Math.max(0, s) * 0.6, -Math.max(0, -s) * 0.6];
+      const A = p.moving ? (p.stride ?? 0.6) : 0;
+      [th, sh] = gait(p.walkT, A * 0.85);
       if (p.pose === 'push') { ar = [1.75, 1.75]; fo = [0.1, 0.1]; az = [0.05, 0.05]; }   // up and forward onto the handle bar
-      else { ar = [1.05, 1.05]; fo = [0.5, 0.5]; az = [0.3, 0.3]; hy += Math.abs(s) * 0.03; }
+      else { ar = [1.05, 1.05]; fo = [0.5, 0.5]; az = [0.3, 0.3]; hy += (0.5 - Math.abs(Math.sin(p.walkT * 8))) * 0.05 * A; }
       break;
     }
     case 'pickup': {
@@ -656,7 +676,7 @@ function walkToward(p, tx, tz, speed, dt) {
       if (!canGo(p.x, p.z, p.y, bx, bz) || npcAt(p, bx, bz)) continue;
       p.x = bx; p.z = bz; p.stuckT = 0;
       p.g.rotation.set(0, Math.atan2(-ux, -uz), 0);
-      p.walkT += dt;
+      stepGait(p, st, speed);
       return Math.hypot(tx - p.x, tz - p.z) < 0.06;
     }
     if ((p.stuckT = (p.stuckT || 0) + dt) > 3) { p.stuckT = 0; p.ghostT = 2; }
@@ -665,7 +685,7 @@ function walkToward(p, tx, tz, speed, dt) {
   if (p.ghostT > 0) p.ghostT -= dt;
   p.x += dx / d * st; p.z += dz / d * st;
   p.g.rotation.set(0, Math.atan2(-dx, -dz), 0);
-  p.walkT += dt;
+  stepGait(p, st, speed);
   return d - st < 0.06;
 }
 function stepPassenger(p, dt) {
@@ -728,7 +748,7 @@ function stepPassenger(p, dt) {
       const st = Math.min(d, 1.0 * dt);
       if (npcAt(p, p.x + dx / d * st, p.z + dz / d * st)) p.wanderT = 0;   // someone's in the way: go somewhere else
       else { const [hx, hz] = moveBody(p, dx / d * st, dz / d * st); if (hx || hz) p.wanderT = 0; }
-      p.g.rotation.set(0, Math.atan2(-dx, -dz), 0); p.walkT += dt;
+      p.g.rotation.set(0, Math.atan2(-dx, -dz), 0); stepGait(p, st, 1.0);
     }
     fallBody(p, dt);
     p.g.position.set(p.x, p.y, p.z);
@@ -760,7 +780,7 @@ function stepPassenger(p, dt) {
     const throughDoor = wp && (p.state === 'inBus' ? p.lx > bus.w : wp.x > bus.w);
     if (wp && !(throughDoor && !busDoorOpen())) {
       const dx = wp.x - p.lx, dz = wp.z - p.lz, d = Math.hypot(dx, dz), st = Math.min(d, 1.3 * dt);
-      if (d > 0.001) { p.lx += dx / d * st; p.lz += dz / d * st; p.walkT += dt; p.faceL = Math.atan2(-dx, -dz); }
+      if (d > 0.001) { p.lx += dx / d * st; p.lz += dz / d * st; stepGait(p, st, 1.3); p.faceL = Math.atan2(-dx, -dz); }
       if (d - st < 0.05) p.path.shift();
       p.pose = 'walk';
     } else p.pose = 'stand';

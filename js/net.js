@@ -97,9 +97,14 @@ function poseAvatar(a, d, dt) {
     animatePax(a);
     return;
   }
-  const moved = Math.hypot(d.x - a.g.position.x, d.z - a.g.position.z);
-  a.moving = moved > 0.01;
-  a.walkT += a.moving ? dt * 1.2 : 0;
+  if (a.isMe) a.g.position.set(d.x, d.y, d.z); else lerpTo(a.g.position, d.x, d.y, d.z, dt);
+  // your body swings round to face the new way, a little behind
+  a.g.rotation.set(0, a.isMe ? d.yaw : turnToward(a.g.rotation.y, d.yaw, 12 * dt), 0);
+  wobble(a, dt);
+  // the legs step in time with how far the body actually moved, so the feet don't skate
+  const spd = Math.hypot(a.svx || 0, a.svz || 0);
+  a.moving = spd > 0.3 && !d.seat;
+  if (a.moving) stepGait(a, spd * dt, spd); else a.stride = Math.max(0, (a.stride || 0) - dt * 3);
   // picking things up and throwing them: a quick squat when something lands in your arms, a fling when it leaves
   const holding = !!(d.held || d.cy);
   if (holding !== !!a.wasHolding) { a.actT = 0; a.act = holding ? 'pickup' : 'throw'; }
@@ -107,11 +112,7 @@ function poseAvatar(a, d, dt) {
   a.actT = (a.actT ?? 9) + dt;
   const actLen = a.act === 'pickup' ? PICK_T + 0.1 : 0.45;
   a.pickK = Math.sin(Math.PI * clamp(a.actT / actLen, 0, 1));
-  a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.moving ? 'walk' : 'stand';
-  if (a.isMe) a.g.position.set(d.x, d.y, d.z); else lerpTo(a.g.position, d.x, d.y, d.z, dt);
-  // your body swings round to face the new way, a little behind
-  a.g.rotation.set(0, a.isMe ? d.yaw : turnToward(a.g.rotation.y, d.yaw, 12 * dt), 0);
-  wobble(a, dt);
+  a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.stride > 0.05 ? 'walk' : 'stand';
   // thrown: tumbling through the air
   if (d.air) { a.spinT = (a.spinT || 0) + dt; a.pose = 'flail'; a.rig.core.rotation.set(a.spinT * 7, 0, a.spinT * 4); }
   else { a.spinT = 0; a.rig.core.rotation.set((a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0) - a.lf, 0, -a.ls); }   // lean in (plus the wobble)
