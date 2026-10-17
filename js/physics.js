@@ -232,11 +232,11 @@ function updatePlayer(dt) {
     if (ME && ME.rag && !ME.rag.limp) for (const i of [0, 1, 2, 7, 8]) { ME.rag.pos[i].x += dx / dd * push * 0.6; ME.rag.pos[i].z += dz / dd * push * 0.6; }
   }
 
-  // shove any luggage you walk into
-  for (const it of items) {
+  // run into loose luggage and you knock it flying (just walking up to it, you stop at it, so you can grab it)
+  if (Math.hypot(P.mvx, P.mvz) > 3) for (const it of items) {
     if (it.state !== 'free' || Math.abs(it.y - P.y) > 0.8) continue;
     const dx = it.x - P.x, dz = it.z - P.z, d = Math.hypot(dx, dz);
-    if (d < it.r + 0.3 && d > 0.001) { it.vx += dx / d * 40 * dt; it.vz += dz / d * 40 * dt; }
+    if (d < it.r + 0.35 && d > 0.001) { it.vx += dx / d * 30 * dt; it.vz += dz / d * 30 * dt; }
   }
 
   // propeller wash knocks you right off the wing
