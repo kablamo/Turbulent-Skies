@@ -89,6 +89,20 @@ function ragSubstep(Rg, fx, fz) {
   // the floor may have shoved a hand or foot the wrong way: put the joints right again
   for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
   for (let i = 0; i < pos.length; i++) { const g = groundAt(pos[i].x, pos[i].z); if (g !== null && pos[i].y < g + RAG_R[i] && pos[i].y > g - 0.6) { prev[i].y += g + RAG_R[i] - pos[i].y; pos[i].y = g + RAG_R[i]; } }
+  // your body parts don't go through bags: pushed out onto the surface (so hands touch, not sink in)
+  if (Rg.solidBags) {
+    const pel = pos[7];
+    for (const it of items) {
+      if (!(it.state === 'pile' || it.state === 'ride' || it.state === 'free') || !it.g.visible || it.extra) continue;
+      const c = it.g.position, rad = Math.max((it.r || 0.3) * 0.75, (it.h || 0.4) * 0.5), cy = c.y + (it.h || 0.4) * 0.5;
+      if (Math.abs(c.x - pel.x) > 2 || Math.abs(c.z - pel.z) > 2) continue;
+      for (let i = 0; i < pos.length; i++) {
+        const p = pos[i], dx = p.x - c.x, dy = p.y - cy, dz = p.z - c.z, d = Math.hypot(dx, dy, dz), min = rad + RAG_R[i];
+        if (d >= min || d < 1e-4) continue;
+        const k = (min - d) / d; p.x += dx * k; p.y += dy * k; p.z += dz * k; prev[i].x += dx * k; prev[i].y += dy * k; prev[i].z += dz * k;
+      }
+    }
+  }
   // pinned points (a hand gripping something, or a wrist someone else is holding) go exactly where they're held
   if (Rg.pins) for (const pin of Rg.pins) pos[pin.i].copy(pin.pos);
 }

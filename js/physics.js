@@ -190,10 +190,27 @@ function updatePlayer(dt) {
     mx += force.x * 0.6; mz += force.z * 0.45;
   }
   if (P.launched) { mx += P.lvx; mz += P.lvz; }   // thrown by another player
+  const was = { x: P.x, z: P.z };
   S.ignoreVeh = heldVehicle(); moveBody(P, mx * dt, mz * dt); S.ignoreVeh = null;
+  // carrying a trolley: it goes where you go, so if it would hit something you can't go there either
+  const vg = GRAB.hands.find(h => h && h.k === 'veh');
+  if (vg) {
+    const v = vehicles[vg.i], pose = carriedVehiclePose(vg, P.x, P.z, P.face);
+    if (!vehicleFits(v, pose.x, pose.z, pose.h)) { P.x = was.x; P.z = was.z; if (!vehicleFits(v, ...Object.values(carriedVehiclePose(vg, P.x, P.z, P.face)))) P.face = P.prevFace ?? P.face; }
+  }
+  P.prevFace = P.face;
   // hanging on to something: you can't get further away than your arms reach
   const wall = GRAB.hands.find(h => h && h.k === 'wall');
   if (wall) { const dx = P.x - wall.at[0], dz = P.z - wall.at[2], dd = Math.hypot(dx, dz), reach = 0.95; if (dd > reach) { P.x = wall.at[0] + dx / dd * reach; P.z = wall.at[2] + dz / dd * reach; } }
+  // bags are solid too (in the pile, on a trolley, lying about): you walk round them, not through them
+  for (const it of items) {
+    if (!(it.state === 'pile' || it.state === 'ride' || it.state === 'free') || !it.g.visible || it.extra) continue;
+    if (it.y > P.y + 1.3 || it.y + (it.h || 0.4) < P.y + 0.12) continue;   // (one you can step over, or it's up above you)
+    const dx = P.x - it.x, dz = P.z - it.z, dd = Math.hypot(dx, dz), min = (it.r || 0.3) * 0.8 + 0.26;
+    if (dd >= min || dd < 1e-3) continue;
+    const push = min - dd;
+    if (canGo(P.x, P.z, P.y, P.x + dx / dd * push, P.z + dz / dd * push)) { P.x += dx / dd * push; P.z += dz / dd * push; }
+  }
   // people are solid: you bump into them (and the bump knocks your ragdoll off balance, so you stumble)
   for (const q of passengers) {
     if (!ON_FOOT.has(q.state) || Math.abs(q.y - P.y) > 1) continue;

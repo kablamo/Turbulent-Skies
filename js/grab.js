@@ -18,9 +18,12 @@ const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && GR
 const holdingWall = () => GRAB.hands.some(h => h && h.k === 'wall');
 const heldVehicle = () => { const h = GRAB.hands.find(h => h && h.k === 'veh'); return h ? vehicles[h.i] : null; };
 const _gr = new THREE.Vector3(), _gl = new THREE.Vector3();
+// turn (x, z) round the vertical axis by angle a, the same way three.js turns things (rotation.y)
+const turnY = (x, z, a) => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
+const r2g = v => Math.round(v * 100) / 100;
 
 // arms: reach out where you're looking (or stay on whatever wall they're holding)
-const KW_GRAB = [0.6, 0.8, 0.8, 0.5, 0.5, 0.65, 0.65, 1, 1, 0.55, 0.55, 0.6, 0.6];   // arms pull harder when reaching
+const KW_GRAB = [0.6, 0.8, 0.8, 0.7, 0.7, 1.1, 1.1, 1, 1, 0.55, 0.55, 0.6, 0.6];   // arms pull harder when reaching and holding
 const _gq = new THREE.Quaternion(), _gax = new THREE.Vector3(), _gp = new THREE.Vector3();
 function reachHands(goal) {
   if (!grabbing()) { ME.kwOverride = null; return; }
@@ -36,7 +39,16 @@ function reachHands(goal) {
   }
   for (let i = 0; i < 2; i++) {
     const h = GRAB.hands[i], s = i ? 1 : -1;
-    if (h && h.k === 'wall') _gr.fromArray(h.at);   // (holding a trolley, your hands stay out in front and the trolley goes with them)
+    if (h && h.k === 'wall') _gr.fromArray(h.at);
+    else if (h && h.k === 'veh') { const v = vehicles[h.i], q = vehPoint(v, h.lx, h.lz); _gr.set(q.x, h.y, q.z); }   // on the spot you grabbed
+    else if (h && h.k === 'item' && items[h.i]) {
+      // a bag: held out in front of your chest (clear of your body), each hand on the spot where it took hold
+      const it = items[h.i], r = it.r || 0.3, fx = -Math.sin(P.face), fz = -Math.cos(P.face);
+      _gl.addVectors(goal[1], goal[2]).multiplyScalar(0.5);
+      const cx = _gl.x + fx * (0.38 + r), cz = _gl.z + fz * (0.38 + r), cy = _gl.y - 0.15;
+      const [ox, oz] = turnY(h.o[0], h.o[2], P.face + h.yr);
+      _gr.set(cx + ox, cy + h.o[1], cz + oz);
+    }
     else _gr.copy(goal[1 + i]).addScaledVector(d, 0.62).add(_gl.set(rx * s * 0.08, -0.05, rz * s * 0.08));
     goal[5 + i].copy(_gr);
     GRAB.reach[i] = (GRAB.reach[i] || new THREE.Vector3()).copy(_gr);
@@ -57,7 +69,13 @@ function updateGrab() {
       const it = items[j];
       if (!['free', 'ride', 'belt', 'pile'].includes(it.state) || !it.g.visible) continue;
       _gr.copy(it.g.position); _gr.y += (it.h || 0.4) * 0.5;
-      if (_gr.distanceTo(hp) < (it.r || 0.3) + 0.2) got = { k: 'item', i: j };
+      if (_gr.distanceTo(hp) < (it.r || 0.3) + 0.2) {
+        // where on the bag the hand is (in the bag's own frame), pulled in onto its surface
+        const yaw = it.g.rotation.y, r = (it.r || 0.3) * 0.85, hh = (it.h || 0.4) * 0.5;
+        let [ox, oz] = turnY(hp.x - _gr.x, hp.z - _gr.z, -yaw);
+        const lenH = Math.hypot(ox, oz) || 1; ox = ox / lenH * r; oz = oz / lenH * r;
+        got = { k: 'item', i: j, o: [r2g(ox), r2g(clamp(hp.y - _gr.y, -hh, hh)), r2g(oz)], yr: r2g(yaw - P.face) };
+      }
     }
     // a passenger? (grab the nearest bit of them: wrist, ankle, head…)
     for (let j = 0; j < passengers.length && !got; j++) {
@@ -77,7 +95,11 @@ function updateGrab() {
       const l = vehLocal(v, hp.x, hp.z), lt = t0 ? vehLocal(v, t0.x, t0.z) : l;
       const near = (q, pad) => Math.abs(q.x) < v.w + pad && Math.abs(q.z) < v.l + pad;
       if ((near(l, 0.3) || near(lt, 0.05)) && hp.y > v.bedTop - 0.4 && hp.y < GROUND + 1.5)
-        got = { k: 'veh', i: vehicles.indexOf(v), lx: Math.round(clamp(l.x, -v.w, v.w) * 100) / 100, lz: Math.round(clamp(l.z, -v.l, v.l) * 100) / 100, y: Math.round(hp.y * 100) / 100 };
+      {
+        const other = GRAB.hands[1 - i], [rx2, rz2] = turnY(v.x - P.x, v.z - P.z, -P.face);
+        got = { k: 'veh', i: vehicles.indexOf(v), lx: r2g(l.x), lz: r2g(l.z), y: r2g(hp.y),   // (exactly where the hand touched it)
+          rel: other && other.k === 'veh' && other.i === vehicles.indexOf(v) ? other.rel : [r2g(rx2), r2g(rz2), r2g(v.h - P.face)] };
+      }
     }
     // something solid? (the hand's pushed into a wall, a seat, a vehicle…; the floor doesn't count)
     // (the hand stops at the surface, so: is the spot it's reaching for inside something?)
@@ -104,20 +126,39 @@ function hostGrabs(dt) {
       who.gPrev[h] = cur && cur.k !== 'wall' ? cur : null;
       if (!cur || cur.k === 'wall' || !hp) continue;
       if (cur.k === 'item') {
-        const o = grabs[1 - h], hp2 = o && o.k === 'item' && o.i === cur.i ? hand(1 - h) : null;
-        if (hp2) { if (h === 1) continue; hp.add(hp2).multiplyScalar(0.5); }   // both hands on it: it sits between them
-        holdItem(items[cur.i], hp, dt);
+        const o = grabs[1 - h], two = o && o.k === 'item' && o.i === cur.i;
+        if (two && h === 1) continue;
+        holdItem(items[cur.i], two ? [[hp, cur], [hand(1 - h), o]] : [[hp, cur]], bodyYaw(who), dt);
       }
-      else if (cur.k === 'veh') dragVehicle(vehicles[cur.i], cur.lx, cur.lz, hp, dt);
+      else if (cur.k === 'veh') {
+        const o = grabs[1 - h]; if (o && o.k === 'veh' && o.i === cur.i && h === 1) continue;
+        const v = vehicles[cur.i], pz = who.isLocal ? P : who.pose, pose = carriedVehiclePose(cur, pz.x, pz.z, bodyYaw(who));
+        if (v && vehicleFits(v, pose.x, pose.z, pose.h)) { v.x = pose.x; v.z = pose.z; v.h = pose.h; syncVehicle(v); }
+      }
       else holdPassenger(passengers[cur.i], cur.pt, hp, `${idOf(who)}${h}`);
     }
   }
 }
-function holdItem(it, hp, dt) {
+// where a held trolley goes: wherever it was relative to you when you took hold of it
+function carriedVehiclePose(g, x, z, face) {
+  const [dx, dz] = turnY(g.rel[0], g.rel[1], face);
+  return { x: x + dx, z: z + dz, h: face + g.rel[2] };
+}
+// a held bag goes wherever puts the spots you're holding it by right in your hands
+function holdItem(it, held, face, dt) {
   if (!it || it.state === 'gone') return;
   if (it.state === 'ride') freeSlot(it);
   if (it.state !== 'grabbed') { it.state = 'grabbed'; it.g.visible = true; }
-  const x = hp.x, y = hp.y - (it.h || 0.4) * 0.6, z = hp.z;
+  let yaw, cx = 0, cy = 0, cz = 0;
+  if (held.length === 2 && held[1][0]) {
+    // two hands: turn the bag so the gap between the hands matches the gap between where they hold it
+    const [[h0, g0], [h1, g1]] = held, ox = g1.o[0] - g0.o[0], oz = g1.o[2] - g0.o[2];
+    yaw = Math.hypot(ox, oz) > 0.05 ? Math.atan2(oz, ox) - Math.atan2(h1.z - h0.z, h1.x - h0.x) : face + g0.yr;
+  } else yaw = face + held[0][1].yr;
+  for (const [hp, g] of held) { if (!hp) continue; const [ox, oz] = turnY(g.o[0], g.o[2], yaw); cx += hp.x - ox; cy += hp.y - g.o[1]; cz += hp.z - oz; }
+  const n = held.filter(h => h[0]).length || 1;
+  const x = cx / n, y = cy / n - (it.h || 0.4) * 0.5, z = cz / n;
+  it.g.rotation.set(0, yaw, 0); it.spinY = yaw;
   it.vx = (x - it.x) / Math.max(dt, 1e-3); it.vy = (y - it.y) / Math.max(dt, 1e-3); it.vz = (z - it.z) / Math.max(dt, 1e-3);
   it.x = x; it.y = y; it.z = z;
   it.g.position.set(x, y, z);
@@ -134,20 +175,6 @@ function holdPassenger(p, pt, hp, key) {
   }
   p.rag.pins = (p.rag.pins || []).filter(q => q.key !== key);
   p.rag.pins.push({ key, i: pt, pos: hp.clone() });
-}
-// dragging a trolley by one spot on it: that spot follows your hand; pulling it sideways swings it round
-function dragVehicle(v, lx, lz, hp, dt) {
-  if (!v || S.driving === v || NET.remotes.some(r => r.driving === v)) return;
-  const q = vehPoint(v, lx, lz), dx = hp.x - q.x, dz = hp.z - q.z;
-  if (Math.hypot(dx, dz) < 0.02) return;
-  const k = Math.min(1, dt * 20), rx = q.x - v.x, rz = q.z - v.z;
-  const turn = -(rx * dz - rz * dx) / (rx * rx + rz * rz + 0.25) * k;  // pushed or pulled off-centre: it swings round
-  const nh = v.h + turn, nx = v.x + dx * k, nz = v.z + dz * k;
-  if (vehicleFits(v, nx, nz, nh)) { v.x = nx; v.z = nz; v.h = nh; }
-  else if (vehicleFits(v, nx, nz, v.h)) { v.x = nx; v.z = nz; }
-  else return;
-  for (const w of v.wheels) w.rotation.x += Math.hypot(dx, dz) * k * 6;
-  syncVehicle(v);
 }
 function letGo(g) {
   if (g.k === 'item') {
