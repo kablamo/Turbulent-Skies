@@ -30,7 +30,8 @@ const D2R = Math.PI / 180;
 // Plane geometry, in the plane's local frame (meters). Cabin floor is y=0, nose points -z.
 // The fuselage is a circle of radius R stretched sideways by SX, so the cabin is wide but not tall.
 //   cockpit z -12..-8.7 | front galley + front lav -8.7..-6.6 | cabin -6.5..6.8 (exit doors at z=0) | cargo bay + rear lav 6.8..12 | ramp
-const R = 2.6, CY = 1.3, SX = 1.45, EYE = 1.6, TOTAL = 300;
+// CHAR shrinks every person a little, so the plane, seats, doors and vehicles are roomy enough for them
+const R = 2.6, CY = 1.3, SX = 1.45, CHAR = 0.85, EYE = 1.42, TOTAL = 300;
 const W = 2.25 * SX;                                             // where the wall meets the floor
 const wallX = y => SX * Math.sqrt(Math.max(0, R * R - (y - CY) ** 2));
 const NOSE = -12, BULK = -8.7, GALLEY = -6.8, CARGO = 6.8, REAR = 12;

@@ -205,7 +205,7 @@ function makePassenger(name, plain) {
   buildAccessories(hips, acc, PROC_BODY, accCol);
   if (acc.includes('balloon')) buildBalloon(core, accCol);
   const wide = rand(0.9, 1.3);
-  g.scale.set(wide, rand(0.88, 1.06), wide);                             // everyone's a different shape
+  g.scale.set(wide, rand(0.88, 1.06), wide).multiplyScalar(CHAR);       // everyone's a different shape
   const sprite = new THREE.Sprite(emojiMat('🙂')); sprite.scale.set(0.24, 0.24, 1); sprite.position.y = 0.5; head.add(sprite);
   const p = { kind: 'pax', name, g, rig, sprite, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 0.3, spin: { x: 0, z: 0 }, phase: rand(0, 10), pose: 'stand', mood: 70,
     state: 'terminal', seat: null, path: [], then: null, next: null, waitT: 0, downT: 0, off: rand(-22, 18), face: '', calling: null, angry: 0, walkT: 0, tx: 0, tz: 0, wanderT: 0, busSeat: null, bubble: null, bubbleT: 0 };
@@ -283,6 +283,7 @@ function stepGait(p, dist, speed) {
   p.stride = A;
   p.walkT += dist / (LEG * 2.8 * A);
 }
+const SIT_LIFT = 0.6 * (1 - CHAR) / CHAR;
 // put the limbs (and the googly eyes) where the current pose wants them
 function animatePax(p) {
   const r = p.rig, t = S.t + p.phase;
@@ -327,6 +328,7 @@ function animatePax(p) {
     default: ar = [Math.sin(t * 1.3) * 0.05, -Math.sin(t * 1.3) * 0.05];   // standing, breathing
   }
   r.hips.position.y = hy;
+  r.core.position.y = 0.85 + (p.pose === 'sit' ? SIT_LIFT : 0);   // (smaller people sit up a bit to reach the seat cushion)
   const fl = p.pose === 'walk' || p.pose === 'stand' ? (p.flop || 0) : 0, flS = p.flopS || 0;   // wobbly arms
   for (let i = 0; i < 2; i++) {
     const s = i ? 1 : -1;
