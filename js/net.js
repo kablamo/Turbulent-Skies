@@ -118,7 +118,16 @@ function poseAvatar(a, d, dt) {
   else { a.spinT = 0; a.rig.core.rotation.set((a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0) - a.lf, 0, -a.ls); }   // lean in (plus the wobble)
   a.rig.head.rotation.z = a.ls * 0.8;
   animatePax(a);
+  // their body is an active ragdoll on their screen: show exactly what it's doing (eased between updates)
+  if (d.rg && !a.isMe) {
+    if (!a.cliRag) a.cliRag = Array.from({ length: 13 }, (_, j) => new THREE.Vector3(d.rg[j * 3], d.rg[j * 3 + 1], d.rg[j * 3 + 2]));
+    const k = Math.min(1, dt * 16);
+    a.cliRag.forEach((v, j) => { v.x += (d.rg[j * 3] - v.x) * k; v.y += (d.rg[j * 3 + 1] - v.y) * k; v.z += (d.rg[j * 3 + 2] - v.z) * k; });
+    mapRag(a, a.cliRag, d.yaw);
+    if (a.model) poseModel(a);
+  } else a.cliRag = null;
 }
+const ragFlat = Rg => Rg ? Rg.pos.flatMap(v => [r2(v.x), r2(v.y), r2(v.z)]) : null;
 // Wobbly bodies (a bit like Wobbly Life / Human Fall Flat): everyone leans into speeding up, slowing down
 // and turning, on springs, so they overshoot and wobble back; the arms flop about the same way.
 function wobble(a, dt) {
@@ -188,7 +197,7 @@ function hostOnData(r, m) {
       break;
     case 'me':
       if (!r.driving && S.pilotRP !== r && !r.carriedBy) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
-      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.pose.face = m.face; r.pose.tp = m.tp; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.pose.face = m.face; r.pose.tp = m.tp; r.rg = m.rg || null; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
       break;
     case 'act': {
       const ud = hostRef(m.ref); if (!ud) return;
@@ -235,7 +244,8 @@ const isThird = who => who.isLocal ? S.view === 'third' : !!who.pose.tp;
 function playerPose(who) {
   const v = who.isLocal ? S.driving : who.driving, flying = who.isLocal ? S.flying : S.pilotRP === who;
   const extra = { pitch: who.pose.pitch || 0, cb: who.carriedBy ? idOf(who.carriedBy) : null, cy: who.carryP ? idOf(who.carryP) : null,
-    air: who.isLocal ? !!P.launched : !!who.air, held: !!who.held };
+    air: who.isLocal ? !!P.launched : !!who.air, held: !!who.held,
+    rg: who.isLocal ? ragFlat(ME && ME.rag) : who.rg || null };
   if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z, yaw: v.h, seat: !v.push, push: !!v.push, ...extra }; }
   if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
   const yaw = who.carriedBy ? bodyYaw(who.carriedBy) : bodyYaw(who);
@@ -248,7 +258,7 @@ function buildSnap() {
   const segBits = segments.map(sg => (sg.sides.L.open ? 1 : 0) | (sg.sides.L.patched ? 2 : 0) | (sg.sides.R.open ? 4 : 0) | (sg.sides.R.patched ? 8 : 0));
   const players = [LOCAL, ...NET.remotes].map(w => {
     const p = playerPose(w);
-    return { id: idOf(w), name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), seat: p.seat, push: p.push, cb: p.cb, cy: p.cy, air: p.air,
+    return { id: idOf(w), name: w.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), seat: p.seat, push: p.push, rg: p.rg, cb: p.cb, cy: p.cy, air: p.air,
       drv: vehicles.indexOf(w.isLocal ? S.driving : w.driving), fly: w.isLocal ? S.flying : S.pilotRP === w, held: heldRef(w.held) };
   });
   return {
@@ -513,7 +523,7 @@ function netUpdate(dt) {
   if (NET.mode === 'client') {
     const k = {};
     for (const key of ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']) if (keys[key]) k[key] = true;
-    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), face: r2(P.face), tp: S.view === 'third' ? 1 : 0, keys: k, air: !!P.launched, seat: !!P.sitV });
+    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), face: r2(P.face), tp: S.view === 'third' ? 1 : 0, rg: ragFlat(ME && ME.rag), keys: k, air: !!P.launched, seat: !!P.sitV });
   }
 }
 // the host keeps sending snapshots even before it clicks "Start playing"

@@ -158,6 +158,8 @@ function updatePlayer(dt) {
   if (P.sitV) { const pt = vehPoint(P.sitV, P.sitSeat.x, P.sitSeat.z); P.x = pt.x; P.z = pt.z; P.y = P.sitV.floor - 0.45; P.vy = 0; return; }
   // someone's carrying you (the host moves you; on a client you follow your carrier)
   if (carriedByName()) { if (isClient()) followCarrier(); return; }
+  // limp, or still getting back up: your legs aren't yours to control
+  if (ME && ME.rag && (ME.rag.limp || ME.rag.ramp < 0.6)) { P.mvx = P.mvz = 0; return; }
   // on foot the arrow keys look around, so you can play without a mouse (in vehicles they steer)
   P.yaw += ((keys.arrowleft ? 1 : 0) - (keys.arrowright ? 1 : 0)) * 2.2 * dt;
   P.pitch = clamp(P.pitch + ((keys.arrowup ? 1 : 0) - (keys.arrowdown ? 1 : 0)) * 1.6 * dt, -1.45, 1.45);

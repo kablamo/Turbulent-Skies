@@ -41,15 +41,18 @@ function ragSubstep(Rg, fx, fz) {
   const { pos, prev } = Rg, h2 = RAG_H * RAG_H;
   // move: keep going the way you were going, plus gravity and the wind
   // (and when getting up, springs pulling every point toward where it would be standing)
-  const T = Rg.targets, k = Rg.k || 0, c = Rg.damp || 0;
+  const T = Rg.k > 0 ? Rg.targets : null, k = Rg.k || 0, c = Rg.damp || 0, kw = Rg.kw, tv = Rg.tv;
   for (let i = 0; i < pos.length; i++) {
     const p = pos[i], q = prev[i];
     const vx = (p.x - q.x) * 0.998, vy = (p.y - q.y) * 0.998, vz = (p.z - q.z) * 0.998;
     let ax = fx, ay = -RAG_G, az = fz;
     if (T) {
-      ax += k * (T[i].x - p.x) - c * vx / RAG_H;
-      ay += k * (T[i].y - p.y) - c * vy / RAG_H + RAG_G * Rg.lift;
-      az += k * (T[i].z - p.z) - c * vz / RAG_H;
+      // each point is pulled toward its target (some parts stiffer than others), and its speed toward the
+      // target's speed, so a body that's walking along doesn't drag behind
+      const w = kw ? kw[i] : 1, tx = tv ? tv[i].x : 0, ty = tv ? tv[i].y : 0, tz = tv ? tv[i].z : 0;
+      ax += k * w * (T[i].x - p.x) + c * w * (tx - vx / RAG_H);
+      ay += k * w * (T[i].y - p.y) + c * w * (ty - vy / RAG_H) + RAG_G * Rg.lift * w;
+      az += k * w * (T[i].z - p.z) + c * w * (tz - vz / RAG_H);
     }
     q.copy(p);
     p.x += vx + ax * h2; p.y += vy + ay * h2; p.z += vz + az * h2;
@@ -91,7 +94,7 @@ const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x
 // the back or cross through each other, and arms can't go through the body.
 const _ja = new THREE.Vector3(), _jf = new THREE.Vector3(), _jx = new THREE.Vector3(), _jr = new THREE.Vector3(), _ju = new THREE.Vector3(), _jb = new THREE.Vector3(), _jd = new THREE.Vector3(), _je = new THREE.Vector3(), _jc = new THREE.Vector3();
 function ragLimits(pos, prev, Rg) {
-  if (Rg.targets) return;   // (while getting up, the springs already pull toward a natural pose)
+  if (Rg.targets && Rg.k > 1) return;   // (while the springs are on they already pull toward a natural pose)
   // the torso's own directions: right, up and back
   _ju.addVectors(pos[1], pos[2]).sub(pos[7]).sub(pos[8]).normalize();
   _jr.subVectors(pos[2], pos[1]).add(_jd.subVectors(pos[8], pos[7]));
@@ -242,4 +245,43 @@ function stepGetUp(p, dt) {
   for (let i = 0; i < Rg.pos.length; i++) { const e = Rg.pos[i].distanceTo(Rg.targets[i]); err += e / Rg.pos.length; worst = Math.max(worst, e); fast = Math.max(fast, Rg.pos[i].distanceTo(Rg.prev[i]) / RAG_H); }
   Rg.done = err < 0.1 && worst < 0.5 && fast < 0.5 ? Rg.done + dt : 0;
   return Rg.done > 0.12 || Rg.upT > 4;
+}
+
+// ---------------------------------------------------------------- your character: an active ragdoll
+// Your body is a ragdoll all the time. Each frame the normal animation (walking, carrying, pushing…) says where
+// every body point *should* be, and springs pull the ragdoll's points toward those spots: stiff in the hips and
+// chest so you stay upright, looser in the arms and legs so they swing and flop. So you wobble, lag and sway,
+// and bumping into things knocks you about. Get thrown (or hold R) and the springs switch off: you go limp
+// and tumble for real. Let go / come to rest and the springs come back on, and you heave yourself back up.
+//   0 head · 1/2 shoulders · 3/4 elbows · 5/6 hands · 7/8 hips · 9/10 knees · 11/12 feet
+const ACTIVE_KW = [0.55, 0.8, 0.8, 0.3, 0.3, 0.22, 0.22, 1, 1, 0.55, 0.55, 0.6, 0.6];
+const ACTIVE_K = 170, ACTIVE_DAMP = 9;
+const _zero = () => new THREE.Vector3();
+function activeRag(a, dt, yaw) {
+  dt = Math.max(dt, 1e-3);
+  const goal = ragPoints(a);                                 // where the animation has put each point this frame
+  let Rg = a.rag;
+  const far = Rg && goal.some((t, i) => t.distanceTo(Rg.pos[i]) > 1.6);
+  if (!Rg || (far && !Rg.limp)) {
+    // first time, or we've been teleported: start (again) exactly in the animated pose, standing still
+    startRag(a, 0, 0, 0); Rg = a.rag;
+    Rg.pos.forEach((v, i) => { v.copy(goal[i]); Rg.prev[i].copy(goal[i]); });
+    Rg.tv = goal.map(_zero); Rg.targets = goal; Rg.ramp = 1;
+  }
+  // how fast each target is moving (so the springs don't make you trail behind when walking)
+  Rg.tv = goal.map((t, i) => Rg.targets ? t.clone().sub(Rg.targets[i]).divideScalar(dt) : _zero());
+  if (Rg.tv.some(v => v.lengthSq() > 400)) Rg.tv = goal.map(_zero);
+  Rg.targets = goal; Rg.kw = ACTIVE_KW;
+  // springs: off while limp, then fading back in as you get up
+  if (Rg.limp) Rg.ramp = 0; else Rg.ramp = Math.min(1, (Rg.ramp || 0) + dt / 0.9);
+  const r = Rg.ramp * Rg.ramp;
+  Rg.k = ACTIVE_K * r; Rg.damp = ACTIVE_DAMP * r; Rg.lift = r;
+  stepRag(a, dt, 0, 0);
+  mapRag(a, Rg.pos, yaw);
+}
+// go limp (thrown, or holding R), flying off at velocity v
+function goLimp(a, vx = 0, vy = 0, vz = 0) {
+  const Rg = a.rag; if (!Rg) return;
+  if (!Rg.limp && (vx || vy || vz)) Rg.prev.forEach((q, i) => q.copy(Rg.pos[i]).sub(new THREE.Vector3(vx, vy, vz).multiplyScalar(RAG_H)));
+  Rg.limp = true; Rg.limpT = 0; Rg.still = 0;
 }

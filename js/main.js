@@ -533,11 +533,39 @@ function updateMe(dt) {
   }
   const seatCam = (S.driving && !S.driving.push) || S.flying;
   ME.g.visible = S.chase || (S.view === 'third' && !seatCam);
-  if (!ME.g.visible) return;
   const d = playerPose(LOCAL);
   if (P.falling) d.air = true;
   if (carriedByName()) d.cb = 1;
-  poseAvatar(ME, d, dt);
+  // on your feet, your body is an active ragdoll (ragdoll.js); sitting, driving, flying or carried, it's animated
+  const active = !P.falling && !d.cb && !S.flying && !P.sitV && !(S.driving && !S.driving.push);
+  if (!active) { ME.rag = null; poseAvatar(ME, d, dt); return; }
+  let Rg = ME.rag;
+  // thrown by someone, or holding R: go limp
+  if (Rg && P.launched) { goLimp(ME, P.lvx, P.vy, P.lvz); P.launched = false; P.lvx = P.lvz = 0; }
+  if (Rg && keys.r && !Rg.limp && !S.driving) goLimp(ME, P.mvx, 0, P.mvz);
+  if (Rg && Rg.limp) {
+    if (S.held) throwHeld(1.2);
+    // you're a ragdoll now: you go wherever your body goes
+    Rg.limpT += dt;
+    const pel = ragMid(Rg.pos, 7, 8), g = groundAt(pel.x, pel.z);
+    P.x = pel.x; P.z = pel.z; P.y = g !== null && pel.y < g + 1.3 ? g : pel.y - 0.75; P.vy = 0; P.mvx = P.mvz = 0;
+    if (g === null && pel.y < -2.5) { ME.rag = null; startFalling(0, 2); return; }   // tumbled off into the sky
+    // let go of R and come to rest: the springs come back on and you heave yourself up
+    if (!keys.r && Rg.limpT > 0.5 && (Rg.still > 0.25 || Rg.limpT > 5)) {
+      Rg.limp = false; Rg.ramp = 0;
+      let best = 1e9;
+      for (let k = 0; k < 12; k++) {   // stand up facing whichever way is least twisting
+        const yaw = P.face + k * Math.PI / 6, t = standPoints(ME, P.x, P.y, P.z, yaw);
+        let e = 0; for (let i = 0; i < t.length; i++) e += (t[i].x - Rg.pos[i].x) ** 2 + (t[i].z - Rg.pos[i].z) ** 2;
+        if (e < best) { best = e; Rg.upYaw = yaw; }
+      }
+      P.face = Rg.upYaw;
+      if (S.view !== 'third') P.yaw = P.face;
+    }
+  }
+  poseAvatar(ME, { ...d, yaw: P.face }, dt);     // the animation: where the body *wants* to be
+  activeRag(ME, dt, P.face);                      // the physics: where it actually is
+  if (ME.model) poseModel(ME);
 }
 
 let last = performance.now(), lastDrawn = last;
