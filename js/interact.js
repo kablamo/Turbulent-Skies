@@ -10,7 +10,7 @@ let mouseDown = false;
 function boarding() {
   const pax = passengers.filter(p => p.state !== 'gone'), bags = items.filter(i => i.state !== 'gone' && !i.extra);
   return {
-    seated: pax.filter(p => p.state === 'seated').length, pax: pax.length,
+    seated: pax.filter(p => p.state === 'seated').length, pax: Math.min(PAX_NEEDED, pax.length),
     loaded: Math.min(BAGS_NEEDED, bags.filter(i => i.state === 'free' && insideHull(i.x, i.z) && i.z > CARGO - 0.3).length), bags: Math.min(BAGS_NEEDED, bags.length),
     rampUp: ramp.target === 0 && ramp.open < 0.01, doorsShut: doors.L.open < 0.01 && doors.R.open < 0.01,
   };
@@ -24,6 +24,11 @@ function takeOff(who = LOCAL) {
   if (P.sitV) standFromSeat();
   takeSeat(who);
   S.phase = 'takeoff'; S.toT = 0; S.toSpeed = 0; S.liftoff = false; S.alt = 0;
+  // whoever (and whatever) isn't on board stays behind at the airport
+  let left = 0;
+  for (const p of passengers) if (p.state !== 'gone' && !insideHull(p.x, p.z) && !onRamp(p.x, p.z)) { if (p.seat) { p.seat.occupant = null; p.seat = null; } p.rag = null; p.state = 'gone'; p.g.visible = false; left++; }
+  for (const it of items) if (it.state !== 'gone' && it.state !== 'held' && !insideHull(it.x, it.z)) { freeSlot(it); it.state = 'gone'; it.g.visible = false; }
+  if (left) say(`👋 ${left} passenger${left > 1 ? 's' : ''} didn't make the cut and stay${left > 1 ? '' : 's'} behind at the gate. They wave sadly.`);
   // nobody gets left behind on the tarmac
   if (!who.isLocal && !insideHull(P.x, P.z)) { S.driving = null; Object.assign(P, { x: 0, y: 0, z: 3, vy: 0 }); }
   NET.remotes.forEach((r, i) => { if (r !== who && (r.driving || !insideHull(r.pose.x, r.pose.z))) { r.driving = null; netTeleport(r, i % 2 ? 0.3 : -0.3, 0, 2 + i * 0.6, 0); } });
@@ -123,10 +128,10 @@ function setPrompt(html, dim) {
   if (html !== lastPrompt) { $('prompt').innerHTML = html; lastPrompt = html; }
   $('prompt').classList.toggle('dim', !!dim);
 }
-// The Interact button is the right mouse (✊ on touch screens). Pressed while pointing at something you can use
+// The Interact button is the left mouse button (✊ on touch screens). Pressed while pointing at something you can use
 // (a door, a seat, a control, a repair…) it uses it, just like E; pointed at a bag, a passenger or nothing, your
 // hands reach out and grab instead (grab.js). Busy with something (driving, carrying…) it does what E would.
-const interactDown = () => rightMouse || keys.grab;
+const interactDown = () => interactMouse || keys.grab;
 function interact(dt) {
   $('holdbar').style.display = 'none';
   const rDown = interactDown(), rise = rDown && !GRAB.mode;
@@ -249,7 +254,7 @@ function updateMarkers() {
   if (crocLoose()) spots.push(items.find(i => i.alive && i.alive.kind === 'croc').g);
   if (S.phase === 'airport' && !S.driving) {
     const b = boarding();
-    if (b.seated === b.pax && b.loaded === b.bags) spots.push(b.rampUp ? STATIONS.yoke.mesh : STATIONS.ramp.mesh);
+    if (b.seated >= b.pax && b.loaded >= b.bags) spots.push(b.rampUp ? STATIONS.yoke.mesh : STATIONS.ramp.mesh);
   }
   let i = 0;
   for (const mesh of spots) {
@@ -365,7 +370,7 @@ canvas.addEventListener('mousedown', e => {
   if (!S.running || S.over || TOUCH) return;
   if (CUT.on) { skipCutscene(); if (!locked()) lock(); return; }
   if (!locked()) { lock(); return; }
-  if (e.button === 0) { mouseDown = true; S.press = true; }
+  // (the left button is Interact: grab.js / interact())
 });
 addEventListener('mouseup', () => { mouseDown = false; });
 addEventListener('mousemove', e => {
@@ -387,7 +392,7 @@ function helpHTML() {
       <tr><td>Mouse or ${k_('←', '↑', '↓', '→')}</td><td>Look around</td></tr>
       <tr><td>${k_('Shift')}</td><td>Run</td></tr>
       <tr><td>${k_('Space')}</td><td>Jump</td></tr>
-      <tr><td>${k_('E')} or left click</td><td>Also interacts (uses things) if you'd rather</td></tr>
+      <tr><td>${k_('E')}</td><td>Also uses things, if you'd rather</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying (next to the luggage trolley, it goes on the trolley)</td></tr>
       <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
@@ -408,7 +413,7 @@ function helpHTML() {
       <tr><th colspan="2">Game</th></tr>
       <tr><td>${k_('P')}</td><td>Pause</td></tr>
       <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
-      <tr><td>Right mouse: <b>Interact</b></td><td>Use what you're pointing at (doors, seats, controls, repairs). Hold it on a bag, a passenger, a trolley or a wall and your hands grab it; let go to drop or throw</td></tr>
+      <tr><td>Left mouse: <b>Interact</b></td><td>Use what you're pointing at (doors, seats, controls, repairs). Hold it on a bag, a passenger, a trolley or a wall and your hands grab it; let go to drop or throw</td></tr>
       <tr><td>Hold ${k_('R')}</td><td>Go floppy (you're a ragdoll!) — let go to get back up</td></tr>
       <tr><td>${k_('V')}</td><td>Switch between third person and first person</td></tr>
       <tr><td>${k_('H')}</td><td>This help screen</td></tr>

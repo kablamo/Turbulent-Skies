@@ -26,15 +26,14 @@ function buildAirport(group, gateName) {
   box(tw + 0.4, H, 0.4, wallM, cx, GROUND + H / 2, T.z1, group);
   for (const x of [T.x0, T.x1]) box(0.4, H, td, wallM, x, GROUND + H / 2, cz, group);
   box(tw + 0.8, 0.4, td + 0.8, wallM, cx, GROUND + H + 0.2, cz, group);
-  // glass front with a door in the middle and a hatch for the baggage belt
-  for (const [x0, x1] of [[T.x0, -1.6], [1.6, BELT_X - 1], [BELT_X + 1, T.x1]]) box(x1 - x0, H - 0.6, 0.12, M.termGlass, (x0 + x1) / 2, GROUND + 0.3 + (H - 0.6) / 2, T.z0, group);
+  // glass front with a door in the middle
+  for (const [x0, x1] of [[T.x0, -1.6], [1.6, T.x1]]) box(x1 - x0, H - 0.6, 0.12, M.termGlass, (x0 + x1) / 2, GROUND + 0.3 + (H - 0.6) / 2, T.z0, group);
   box(tw, 0.6, 0.4, wallM, cx, GROUND + 0.3, T.z0, group);
   box(3.2, H - 3.4, 0.4, wallM, 0, GROUND + 3.4 + (H - 3.4) / 2, T.z0, group);
-  box(2, H - 1.9, 0.4, wallM, BELT_X, GROUND + 1.9 + (H - 1.9) / 2, T.z0, group);
-  for (let x = T.x0; x <= T.x1; x += 4) if (Math.abs(x) > 2 && Math.abs(x - BELT_X) > 1.2) box(0.15, H, 0.2, M.dark, x, GROUND + H / 2, T.z0, group);
+  for (let x = T.x0; x <= T.x1; x += 4) if (Math.abs(x) > 2) box(0.15, H, 0.2, M.dark, x, GROUND + H / 2, T.z0, group);
   const doors = [box(1.6, 3.4, 0.08, M.termGlass, -0.8, GROUND + 1.7, T.z0, group), box(1.6, 3.4, 0.08, M.termGlass, 0.8, GROUND + 1.7, T.z0, group)];
   textPlane(10, 2.0, gateName, '#1b2a48', '#ffd34a', group, 0, GROUND + 7.4, T.z0 - 0.3, Math.PI);
-  textPlane(4, 0.7, '🧳 BAGGAGE', '#1b2a48', '#fff', group, BELT_X, GROUND + 2.4, T.z0 - 0.25, Math.PI, 'bold 54px sans-serif');
+  textPlane(4, 0.7, '🧳 BAGGAGE ⬇', '#1b2a48', '#fff', group, BELT_X - 1.6, GROUND + 2.4, T.z0 - 0.25, Math.PI, 'bold 54px sans-serif');
   // inside: benches, gate desk, departures board, lights
   for (const dz of [5, 7.5, 10]) {
     const z = T.z0 + dz;
@@ -49,13 +48,7 @@ function buildAirport(group, gateName) {
   const tl = new THREE.PointLight(0xfff4e0, 0.6, 40); tl.position.set(0, GROUND + 5, cz); group.add(tl);
   decorateTerminal(group);
 
-  // ---- baggage conveyor belt, running out through a flap in the terminal wall
-  box(1.4, 0.6, BELT_START - BELT_END + 1, M.grey, BELT_X, GROUND + 0.4, (BELT_START + BELT_END) / 2, group);
-  const belt = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, BELT_START - BELT_END + 1), new THREE.MeshStandardMaterial({ map: beltTex, roughness: .8 }));
-  belt.position.set(BELT_X, BELT_Y - 0.02, (BELT_START + BELT_END) / 2); group.add(belt);
-  for (const s of [-1, 1]) box(0.08, 0.25, BELT_START - BELT_END + 1, M.yellow, BELT_X + s * 0.68, BELT_Y + 0.08, (BELT_START + BELT_END) / 2, group);
-  box(1.6, 0.6, 0.2, M.yellow, BELT_X, GROUND + 0.4, BELT_END - 0.6, group);
-  for (let i = 0; i < 7; i++) box(0.16, 1.0, 0.03, M.dark, BELT_X - 0.55 + i * 0.18, GROUND + 1.35, T.z0 - 0.05, group);
+  // (the luggage just waits in a big heap outside the terminal: see buildPile in people.js)
 
   // ---- control tower, lamp posts, fuel truck, cones
   cyl(1.8, 2.4, 26, wallM, -42, GROUND + 13, 75, group);
@@ -176,7 +169,6 @@ const BLOCKS = [
   [TERM.x0 - 0.2, -1.6, TERM.z0 - 0.25, TERM.z0 + 0.25], [1.6, TERM.x1 + 0.2, TERM.z0 - 0.25, TERM.z0 + 0.25],
   [TERM.x0 - 0.2, TERM.x0 + 0.2, TERM.z0, TERM.z1], [TERM.x1 - 0.2, TERM.x1 + 0.2, TERM.z0, TERM.z1],
   [TERM.x0, TERM.x1, TERM.z1 - 0.2, TERM.z1 + 0.2],
-  [BELT_X - 0.8, BELT_X + 0.8, BELT_END - 0.8, BELT_START + 0.6],
   ...[5, 7.5, 10].map(dz => [-14.2, -3.8, TERM.z0 + dz - 0.4, TERM.z0 + dz + 0.5]),
   [-17.1, -12.9, TERM.z0 + 2.5, TERM.z0 + 3.5], [-44.5, -39.5, 72.5, 77.5], [28.7, 31.3, 44.8, 53.2],
   // terminal decorations: snack bar, coffee kiosk, vending machines, shop shelves, teddy, duck, palms, arcade

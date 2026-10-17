@@ -94,12 +94,15 @@ function ragSubstep(Rg, fx, fz) {
     const pel = pos[7];
     for (const it of items) {
       if (!(it.state === 'pile' || it.state === 'ride' || it.state === 'free') || !it.g.visible || it.extra) continue;
-      const c = it.g.position, rad = Math.max((it.r || 0.3) * 0.75, (it.h || 0.4) * 0.5), cy = c.y + (it.h || 0.4) * 0.5;
-      if (Math.abs(c.x - pel.x) > 2 || Math.abs(c.z - pel.z) > 2) continue;
+      const c = it.g.position;
+      if (Math.abs(c.x - pel.x) > 2.5 || Math.abs(c.z - pel.z) > 2.5) continue;
       for (let i = 0; i < pos.length; i++) {
-        const p = pos[i], dx = p.x - c.x, dy = p.y - cy, dz = p.z - c.z, d = Math.hypot(dx, dy, dz), min = rad + RAG_R[i];
-        if (d >= min || d < 1e-4) continue;
-        const k = (min - d) / d; p.x += dx * k; p.y += dy * k; p.z += dz * k; prev[i].x += dx * k; prev[i].y += dy * k; prev[i].z += dz * k;
+        const p = pos[i], b = bagPush(it, p.x, p.y, p.z, RAG_R[i] * 0.8);
+        if (!b) continue;
+        // out of the box: through the top if it's only just in from above, otherwise out the nearest side
+        const top = it.y + (it.h || 0.4) + RAG_R[i] * 0.8 - p.y;
+        if (top < b.depth) { p.y += top; prev[i].y += top; }
+        else { p.x += b.dx * b.depth; p.z += b.dz * b.depth; prev[i].x += b.dx * b.depth; prev[i].z += b.dz * b.depth; }
       }
     }
   }

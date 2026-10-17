@@ -101,6 +101,16 @@ const BAGS = {
   } },
   egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
 };
+// a point (x, y, z) against a bag's box: how far it pokes in, and which way to push it out (null if outside)
+function bagPush(it, x, y, z, pad) {
+  const [lx, lz] = turnY(x - it.x, z - it.z, -(it.g.rotation.y || 0)), hw = (it.hw || it.r || 0.3) + pad, hd = (it.hd || it.r || 0.3) + pad;
+  if (Math.abs(lx) >= hw || Math.abs(lz) >= hd || y < it.y - pad || y > it.y + (it.h || 0.4) + pad) return null;
+  // out through the nearest side
+  const ex = hw - Math.abs(lx), ez = hd - Math.abs(lz);
+  const [wx, wz] = ex < ez ? turnY(Math.sign(lx) || 1, 0, it.g.rotation.y || 0) : turnY(0, Math.sign(lz) || 1, it.g.rotation.y || 0);
+  return { depth: Math.min(ex, ez), dx: wx, dz: wz };
+}
+const turnY = (x, z, a) => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
 const bagBox = g => { g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(g); return b.isEmpty() ? new THREE.Box3(new THREE.Vector3(-0.2, 0, -0.2), new THREE.Vector3(0.2, 0.4, 0.2)) : b; };
 // the luggage for this flight
 // mostly the Blender bags (suitcases, backpacks, briefcases), plus a few silly things
@@ -111,14 +121,15 @@ function spawnBag(type) {
   const g = new THREE.Group();
   type.build(g); plane.add(g); g.visible = false;
   const it = { kind: 'bag', type, name: type.name, alive: type.alive, extra: type.extra, g, x: BELT_X, y: BELT_Y, z: BELT_START, vx: 0, vy: 0, vz: 0, r: type.r,
-    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), caged: !!type.cage, h: bagBox(g).max.y, hw: (bagBox(g).max.x - bagBox(g).min.x) / 2 };
+    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), caged: !!type.cage, h: bagBox(g).max.y, hw: (bagBox(g).max.x - bagBox(g).min.x) / 2, hd: (bagBox(g).max.z - bagBox(g).min.z) / 2 };
   g.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
   items.push(it);
   return it;
 }
 
 // ---------------------------------------------------------------- passengers
-const FIRST = ['Gary', 'Big Steve', 'Dolores', 'Sir Reginald', 'Gertrude', 'Tiny Tim', 'Bartholomew', 'Mei', 'Doris', 'Kofi', 'Priya', 'Captain Kevin', 'Yuki', 'Nana Joan', 'Carlos', 'Ivan'];
+const FIRST = ['Gary', 'Big Steve', 'Dolores', 'Sir Reginald', 'Gertrude', 'Tiny Tim', 'Bartholomew', 'Mei', 'Doris', 'Kofi', 'Priya', 'Captain Kevin', 'Yuki', 'Nana Joan', 'Carlos', 'Ivan',
+  'Brenda', 'Uncle Fergus', 'Olu', 'Madame Fifi', 'Sven', 'Agnes', 'Hamish', 'Lola'];
 // passenger states: terminal (wandering) → toBus → inBus → bus → walk/wait → seated, plus held / air / down / gone
 const passengers = [];
 // a limb hanging down from a joint; rotate the returned pivot to move it
@@ -402,7 +413,8 @@ function ragdoll(p, vx, vy, vz) {
   shout(p, pick(YELLS.thrown));
   slideWhistle(true);
 }
-const PAX_COUNT = 8;
+// far more people than the flight needs: pick who you want to take (at least PAX_NEEDED); the rest stay behind
+const PAX_COUNT = 20, PAX_NEEDED = 8;
 (function populate() {
   const names = [...FIRST].sort(() => Math.random() - 0.5);
   for (let i = 0; i < PAX_COUNT; i++) {

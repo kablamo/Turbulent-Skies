@@ -30,7 +30,7 @@ function makeVehicle(kind, x, z) {
     // a luggage trolley you push by hand: a low flat bed with a handle frame at the back (+z).
     // These sizes match models/trolley.glb at TROLLEY.scale; the boxes below are only a stand-in until it loads.
     Object.assign(v, { name: 'luggage trolley', w: 0.58, l: 1.1, max: 5.5, floor: GROUND, bedTop: GROUND + 0.29, push: true,
-      eye: { x: 0, y: GROUND + EYE, z: 1.55 }, stand: { x: 0, z: 1.6 }, tail: 0.6,   // you walk along behind the handle
+      eye: { x: 0, y: GROUND + EYE, z: 1.55 }, stand: { x: 0, z: 1.6 },
       zones: [[-0.55, 0.55, -1.1, 0.68, 'bed']],                              // hop onto the bed to ride along
       bed: { x0: -0.55, x1: 0.55, z0: -1.05, z1: 0.7 },
       solidTop: l => l.z > 0.68 ? GROUND + 1.25 : v.bedTop });
@@ -137,6 +137,40 @@ function vehicleFits(v, x, z, h) {
   return true;
 }
 
+// ---- bumping into things
+// which other vehicle this one would run into at (x, z, h), if any
+function vehicleBumped(v, x, z, h) {
+  const probe = { x, z, h, w: v.w, l: v.l };
+  for (const o of vehicles) {
+    if (o === v) continue;
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) { const p = vehPoint(probe, a * v.w, b * v.l); if (inVehicle(o, p.x, p.z)) return o; }
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const p = vehPoint(o, a * o.w, b * o.l), l = vehLocal(probe, p.x, p.z); if (Math.abs(l.x) < v.w && Math.abs(l.z) < v.l) return o; }
+  }
+  return null;
+}
+// shove a vehicle along: a trolley rolls away, the bus barely budges (the host moves things for everyone)
+function shoveVehicle(o, dx, dz) {
+  if (!o || S.phase !== 'airport') return;
+  if (isClient()) { netSend({ t: 'vpush', i: vehicles.indexOf(o), dx: Math.round(dx * 1000) / 1000, dz: Math.round(dz * 1000) / 1000 }); return; }
+  if (S.driving === o || NET.remotes.some(r => r.driving === o)) return;
+  const k = o.kind === 'bus' ? 0.12 : 0.9, nx = o.x + dx * k, nz = o.z + dz * k;
+  if (vehicleFits(o, nx, nz, o.h)) { o.x = nx; o.z = nz; for (const w of o.wheels) w.rotation.x += Math.hypot(dx, dz) * 4; syncVehicle(o); }
+}
+// knock someone flying (they ragdoll)
+function knockOver(p, vx, vz) {
+  if (!p || !ON_FOOT.has(p.state)) return;
+  if (isClient()) { netSend({ t: 'knock', i: passengers.indexOf(p), vx: Math.round(vx * 100) / 100, vz: Math.round(vz * 100) / 100 }); return; }
+  ragdoll(p, vx, 2.4, vz);
+}
+// anyone standing where a vehicle is going gets bowled over
+function bowlOver(v, x, z, h, vx, vz) {
+  for (const p of passengers) {
+    if (!ON_FOOT.has(p.state)) continue;
+    const l = vehLocal({ x, z, h }, p.x, p.z);
+    if (Math.abs(l.x) < v.w + 0.25 && Math.abs(l.z) < v.l + 0.25) knockOver(p, vx, vz);
+  }
+}
+
 function enterVehicle(v, who = LOCAL) {
   if (vehicles.some(o => o === v && (o === S.driving || NET.remotes.some(r => r.driving === o)))) return say(`Someone is already driving the ${v.name}.`);
   if (!who.isLocal) { who.driving = v; v.v = 0; return; }
@@ -161,6 +195,8 @@ function driveVehicle(v, dt, k = keys) {
   const nh = v.h + steer * dt * (v.push ? 1.5 : 0.9 * clamp(v.v / 3, -1, 1));   // a trolley turns on the spot
   if (vehicleFits(v, v.x, v.z, nh)) { if (v === S.driving) P.yaw += nh - v.h; v.h = nh; }   // your view turns with the vehicle
   const nx = v.x - Math.sin(v.h) * v.v * dt, nz = v.z - Math.cos(v.h) * v.v * dt;
+  if (Math.abs(v.v) > 1.2) bowlOver(v, nx, nz, v.h, -Math.sin(v.h) * v.v * 1.2, -Math.cos(v.h) * v.v * 1.2);
+  if (!vehicleFits(v, nx, nz, v.h)) { const o = vehicleBumped(v, nx, nz, v.h); if (o && o.kind !== 'bus') shoveVehicle(o, nx - v.x, nz - v.z); }
   if (vehicleFits(v, nx, nz, v.h)) { v.x = nx; v.z = nz; }
   else { if (Math.abs(v.v) > 2) { beep(90, .2, 'square', .06); S.shake = 0.6; } v.v = -v.v * 0.2; }
   for (const w of v.wheels) w.rotation.x += v.v * dt * 2.5;

@@ -213,6 +213,8 @@ function hostOnData(r, m) {
       break;
     case 'wriggle': wriggle(r); break;
     case 'exit': if (r.driving) exitVehicle(r); break;
+    case 'vpush': shoveVehicle(vehicles[m.i], m.dx, m.dz); break;   // a player bumped into a vehicle
+    case 'knock': knockOver(passengers[m.i], m.vx, m.vz); break;    // …or ran someone over
     case 'vehAct': if (r.driving) vehicleAction(r.driving); break;
     case 'busDoor': if (r.driving && r.driving.kind === 'bus') toggleBusDoor(r.driving); break;
     case 'stand': if (S.pilotRP === r) { S.pilotRP = null; netTeleport(r, -0.75, 0, -10, Math.PI); say(`${r.name} left the controls. Autopilot on.`); } break;
@@ -361,6 +363,7 @@ function applySnap(m) {
     const p = passengers[i];
     if (p.state === 'gone') return;
     p.netRag = rg;
+    if (state === 'gone') { p.state = 'gone'; p.g.visible = false; return; }   // left behind (or off the plane)
     p.net = { x, y, z, ry, crx, crz }; p.pose = pose; p.walkT = walkT; p.state = state; p.mood = mood; p.angry = angry ? 1 : 0;
     p.seat = seatI >= 0 ? seats[seatI] : null;
     if (bubble && (bubble !== p.bubbleText || !p.bubble.visible)) shout(p, bubble, 3);

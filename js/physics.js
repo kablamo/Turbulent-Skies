@@ -196,9 +196,18 @@ function updatePlayer(dt) {
   const vg = GRAB.hands.find(h => h && h.k === 'veh');
   if (vg) {
     const v = vehicles[vg.i], pose = carriedVehiclePose(vg, P.x, P.z, P.face);
+    // it bowls people over, and shoves other trolleys (or, barely, the bus) out of the way
+    bowlOver(v, pose.x, pose.z, pose.h, P.mvx * 1.3, P.mvz * 1.3);
+    if (!vehicleFits(v, pose.x, pose.z, pose.h)) { const o = vehicleBumped(v, pose.x, pose.z, pose.h); if (o) shoveVehicle(o, pose.x - v.x, pose.z - v.z); }
     if (!vehicleFits(v, pose.x, pose.z, pose.h)) { P.x = was.x; P.z = was.z; if (!vehicleFits(v, ...Object.values(carriedVehiclePose(vg, P.x, P.z, P.face)))) P.face = P.prevFace ?? P.face; }
   }
   P.prevFace = P.face;
+  // walked into a vehicle: give it a shove (a trolley rolls away from you; the bus rocks a little)
+  if (S.phase === 'airport' && !vg && Math.hypot(P.x - was.x, P.z - was.z) < Math.hypot(mx, mz) * dt * 0.5) {
+    const ix = was.x + mx * dt * 3, iz = was.z + mz * dt * 3;
+    const o = vehicles.find(v => inVehicle(v, ix, iz, 0.1));
+    if (o) shoveVehicle(o, mx * dt, mz * dt);
+  }
   // hanging on to something: you can't get further away than your arms reach
   const wall = GRAB.hands.find(h => h && h.k === 'wall');
   if (wall) { const dx = P.x - wall.at[0], dz = P.z - wall.at[2], dd = Math.hypot(dx, dz), reach = 0.95; if (dd > reach) { P.x = wall.at[0] + dx / dd * reach; P.z = wall.at[2] + dz / dd * reach; } }
@@ -206,17 +215,16 @@ function updatePlayer(dt) {
   for (const it of items) {
     if (!(it.state === 'pile' || it.state === 'ride' || it.state === 'free') || !it.g.visible || it.extra) continue;
     if (it.y > P.y + 1.3 || it.y + (it.h || 0.4) < P.y + 0.12) continue;   // (one you can step over, or it's up above you)
-    const dx = P.x - it.x, dz = P.z - it.z, dd = Math.hypot(dx, dz), min = (it.r || 0.3) * 0.8 + 0.26;
-    if (dd >= min || dd < 1e-3) continue;
-    const push = min - dd;
-    if (canGo(P.x, P.z, P.y, P.x + dx / dd * push, P.z + dz / dd * push)) { P.x += dx / dd * push; P.z += dz / dd * push; }
+    const b = bagPush(it, P.x, it.y + 0.05, P.z, 0.26);                     // its real shape: a long cage is long
+    if (b && canGo(P.x, P.z, P.y, P.x + b.dx * b.depth, P.z + b.dz * b.depth)) { P.x += b.dx * b.depth; P.z += b.dz * b.depth; }
   }
   // people are solid: you bump into them (and the bump knocks your ragdoll off balance, so you stumble)
   for (const q of passengers) {
     if (!ON_FOOT.has(q.state) || Math.abs(q.y - P.y) > 1) continue;
     const dx = P.x - q.x, dz = P.z - q.z, dd = Math.hypot(dx, dz), min = 0.48;
     if (dd >= min || dd < 1e-3) continue;
-    const push = min - dd;
+    const push = min - dd, sp = Math.hypot(P.mvx, P.mvz);
+    if (sp > 2.6 && (P.mvx * -dx + P.mvz * -dz) > 0) { knockOver(q, P.mvx * 0.9, P.mvz * 0.9); continue; }   // run into someone: down they go
     if (canGo(P.x, P.z, P.y, P.x + dx / dd * push, P.z + dz / dd * push)) { P.x += dx / dd * push; P.z += dz / dd * push; }
     if (ME && ME.rag && !ME.rag.limp) for (const i of [0, 1, 2, 7, 8]) { ME.rag.pos[i].x += dx / dd * push * 0.6; ME.rag.pos[i].z += dz / dd * push * 0.6; }
   }

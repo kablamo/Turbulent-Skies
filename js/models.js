@@ -249,7 +249,7 @@ function prepareLuggage(scene) {
     const bb = new THREE.Box3().setFromObject(g), c = bb.getCenter(new THREE.Vector3());
     for (const o of g.children) o.position.sub(new THREE.Vector3(c.x, bb.min.y, c.z));
     const size = bb.getSize(new THREE.Vector3());
-    g.userData.h = size.y; g.userData.hw = size.x / 2; g.userData.r = clamp(Math.max(size.x, size.z) * 0.35, 0.2, 0.55);
+    g.userData.h = size.y; g.userData.hw = size.x / 2; g.userData.hd = size.z / 2; g.userData.r = clamp(Math.max(size.x, size.z) * 0.35, 0.2, 0.55);
     LUGGAGE[key] = g;
   }
   items.forEach(reskinBag);
@@ -262,7 +262,7 @@ function reskinBag(it) {
   const m = restClone(proto, tint);
   m.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
   g.add(m);
-  it.h = proto.userData.h; it.hw = proto.userData.hw; it.r = proto.userData.r; it.reskinned = true;
+  it.h = proto.userData.h; it.hw = proto.userData.hw; it.hd = proto.userData.hd; it.r = proto.userData.r; it.reskinned = true;
 }
 // the luggage trolley: scaled to fit the game, its colour parts painted, and swapped in for the stand-in boxes
 function prepareTrolley(src) {

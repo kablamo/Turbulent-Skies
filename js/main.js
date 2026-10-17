@@ -367,8 +367,8 @@ function boardingCard() {
   const onBelt = items.filter(i => i.state === 'pile').length, onTrolley = trolleys.reduce((n, v) => n + trolleyLoad(v), 0);
   const row = (ok, text, loc) => `<div class="st ${ok ? 'done' : 'cur'}">${ok ? '✓' : '▶'} ${text}${!ok && loc ? `<span class="loc">📍 ${loc}</span>` : ''}</div>`;
   return `<div class="card board"><div class="ct">🛫 BOARDING · FLIGHT 404</div>
-    ${row(b.seated === b.pax, `Passengers seated: ${b.seated}/${b.pax}`, `${inTerm} in the terminal · ${onBus} on the bus. Park the bus at the terminal doors and press F, then press F again at the cargo ramp.`)}
-    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} still in the pile · ${onTrolley} on the trolleys. Grab bags from the big pile by the conveyor (hold right mouse), drop them on a luggage trolley, push it to the cargo ramp with your hands and drag each bag into the cargo bay.`)}
+    ${row(b.seated >= b.pax, `Passengers seated: ${b.seated}/${b.pax} needed`, `${inTerm} in the terminal · ${onBus} on the bus. Park the bus at the terminal doors and press F, then press F again at the cargo ramp.`)}
+    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} still in the pile · ${onTrolley} on the trolleys. Grab bags from the big pile by the conveyor (hold the left mouse button), drop them on a luggage trolley, push it to the cargo ramp with your hands and drag each bag into the cargo bay.`)}
     ${row(b.rampUp, 'Raise the cargo ramp', 'Cargo bay · yellow panel')}
     ${row(b.doorsShut, 'Exit doors closed', 'Exit row')}
     ${row(false, 'Take off from the captain\'s seat', 'Cockpit · yoke')}</div>`;

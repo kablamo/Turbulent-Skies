@@ -64,7 +64,7 @@ function endCutscene() {
   cutUI.style.display = 'none';
   camera.fov = 72; camera.updateProjectionMatrix();
   $('hud').style.display = '';
-  sayLocal('Welcome to Gate 404! Your passengers are waiting in here, and their bags are piled up by the conveyor. Grab them (right mouse) and get 12 into the cargo bay!', 'good');
+  sayLocal('Welcome to Gate 404! Your passengers are waiting in here, and their bags are piled up by the conveyor. Grab them (left mouse) and get 12 into the cargo bay!', 'good');
 }
 const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _fw = new THREE.Vector3(), _rt = new THREE.Vector3();

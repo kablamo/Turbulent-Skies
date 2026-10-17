@@ -1,4 +1,4 @@
-// Grabbing, Human Fall Flat style. Hold the right mouse button (✊ on a touch screen) and both arms reach out
+// Grabbing, Human Fall Flat style. Hold the left mouse button (✊ on a touch screen) and both arms reach out
 // where you're looking. Whatever a hand touches, it holds on to:
 //   · a luggage trolley: drag it about (or shove it) by wherever you're holding it
 //   · a bag dangles from your hand, and flies off with the swing of your arm when you let go
@@ -7,19 +7,18 @@
 // The host does the moving of bags and passengers for everyone; each player only says what their hands hold.
 'use strict';
 const GRAB = { hands: [null, null], reach: [null, null], mode: null };   // mode: 'act' (using something) or 'grab'   // your hands: null, { k: 'item', i }, { k: 'pax', i, pt } or { k: 'wall', at: [x, y, z] }
-let rightMouse = false;
-canvas.addEventListener('mousedown', e => { if (e.button === 2) rightMouse = true; });
-addEventListener('mouseup', e => { if (e.button === 2) rightMouse = false; });
+let interactMouse = false;
+canvas.addEventListener('mousedown', e => { if (e.button === 0) interactMouse = true; });   // left click is Interact
+addEventListener('mouseup', e => { if (e.button === 0) interactMouse = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('blur', () => { rightMouse = false; });
+addEventListener('blur', () => { interactMouse = false; });
 
-const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && GRAB.mode === 'grab' && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
+const grabbing = () => S.running && !S.paused && (interactMouse || keys.grab) && GRAB.mode === 'grab' && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
   && ME && ME.rag && !ME.rag.limp;
 const holdingWall = () => GRAB.hands.some(h => h && h.k === 'wall');
 const heldVehicle = () => { const h = GRAB.hands.find(h => h && h.k === 'veh'); return h ? vehicles[h.i] : null; };
 const _gr = new THREE.Vector3(), _gl = new THREE.Vector3();
 // turn (x, z) round the vertical axis by angle a, the same way three.js turns things (rotation.y)
-const turnY = (x, z, a) => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
 const r2g = v => Math.round(v * 100) / 100;
 
 // arms: reach out where you're looking (or stay on whatever wall they're holding)
@@ -43,9 +42,9 @@ function reachHands(goal) {
     else if (h && h.k === 'veh') { const v = vehicles[h.i], q = vehPoint(v, h.lx, h.lz); _gr.set(q.x, h.y, q.z); }   // on the spot you grabbed
     else if (h && h.k === 'item' && items[h.i]) {
       // a bag: held out in front of your chest (clear of your body), each hand on the spot where it took hold
-      const it = items[h.i], r = it.r || 0.3, fx = -Math.sin(P.face), fz = -Math.cos(P.face);
+      const it = items[h.i], depth = h.d ?? (it.r || 0.3), fx = -Math.sin(P.face), fz = -Math.cos(P.face);
       _gl.addVectors(goal[1], goal[2]).multiplyScalar(0.5);
-      const cx = _gl.x + fx * (0.38 + r), cz = _gl.z + fz * (0.38 + r), cy = _gl.y - 0.15;
+      const cx = _gl.x + fx * (0.32 + depth), cz = _gl.z + fz * (0.32 + depth), cy = _gl.y - 0.2;
       const [ox, oz] = turnY(h.o[0], h.o[2], P.face + h.yr);
       _gr.set(cx + ox, cy + h.o[1], cz + oz);
     }
@@ -69,14 +68,23 @@ function updateGrab() {
       const it = items[j];
       if (!['free', 'ride', 'belt', 'pile'].includes(it.state) || !it.g.visible) continue;
       _gr.copy(it.g.position); _gr.y += (it.h || 0.4) * 0.5;
-      if (_gr.distanceTo(hp) < (it.r || 0.3) + 0.2) {
-        // where on the bag the hand is (in the bag's own frame), pulled in onto its surface
-        const yaw = it.g.rotation.y, r = (it.r || 0.3) * 0.85, hh = (it.h || 0.4) * 0.5;
-        let [ox, oz] = turnY(hp.x - _gr.x, hp.z - _gr.z, -yaw);
-        const lenH = Math.hypot(ox, oz) || 1; ox = ox / lenH * r; oz = oz / lenH * r;
-        got = { k: 'item', i: j, o: [r2g(ox), r2g(clamp(hp.y - _gr.y, -hh, hh)), r2g(oz)], yr: r2g(yaw - P.face) };
+      if (bagPush(it, hp.x, hp.y, hp.z, 0.2)) {   // the hand's on (or right by) any part of it
+        // got it: both hands take hold, one each side. Turn it so its long side goes across in front of you
+        // (a crocodile cage is carried sideways, not poking into your tummy), keeping the turn small
+        const hw = it.hw || 0.25, hd = it.hd || 0.25, cur = it.g.rotation.y - P.face;
+        const opts = hd > hw * 1.15 ? [Math.PI / 2, -Math.PI / 2] : [0, Math.PI];
+        const yr = opts.reduce((a, b) => Math.abs(Math.atan2(Math.sin(b - cur), Math.cos(b - cur))) < Math.abs(Math.atan2(Math.sin(a - cur), Math.cos(a - cur))) ? b : a);
+        const across = hd > hw * 1.15 ? hd : hw, depth = hd > hw * 1.15 ? hw : hd;   // half-sizes across you / toward you
+        GRAB.hands = [-1, 1].map(s => {
+          // each hand: on the side of the bag nearest you, toward its ends (as far apart as arms comfortably go)
+          const wx = s * Math.min(across * 0.85, 0.32), wz = depth * 0.9;   // in your frame: x = to your right, z = toward you
+          const [ox, oz] = turnY(wx, wz, -yr);                               // …in the bag's own frame
+          return { k: 'item', i: j, o: [r2g(ox), 0, r2g(oz)], yr: r2g(yr), d: r2g(depth) };
+        });
+        break;
       }
     }
+    if (GRAB.hands[i] && GRAB.hands[i].k === 'item') break;   // (both hands are on a bag now)
     // a passenger? (grab the nearest bit of them: wrist, ankle, head…)
     for (let j = 0; j < passengers.length && !got; j++) {
       const p = passengers[j];
@@ -106,6 +114,7 @@ function updateGrab() {
     const t = GRAB.reach[i], wy = P.y + 0.6;
     if (!got && t && hp.distanceTo(t) < 0.6 && (!canGo(P.x, P.z, wy, hp.x, hp.z) || !canGo(P.x, P.z, wy, t.x, t.z))) got = { k: 'wall', at: hp.toArray().map(v => Math.round(v * 100) / 100) };
     if (got) { GRAB.hands[i] = got; beep(got.k === 'wall' ? 260 : 420, .06, 'triangle', .04); }
+    if (GRAB.hands[i] && GRAB.hands[i].k === 'item' && GRAB.hands[1 - i] && GRAB.hands[1 - i].k === 'item') { beep(420, .06, 'triangle', .04); break; }
   }
   // hands on a wall stay put there
   Rg.ignoreVeh = heldVehicle();
@@ -149,12 +158,9 @@ function holdItem(it, held, face, dt) {
   if (!it || it.state === 'gone') return;
   if (it.state === 'ride') freeSlot(it);
   if (it.state !== 'grabbed') { it.state = 'grabbed'; it.g.visible = true; }
-  let yaw, cx = 0, cy = 0, cz = 0;
-  if (held.length === 2 && held[1][0]) {
-    // two hands: turn the bag so the gap between the hands matches the gap between where they hold it
-    const [[h0, g0], [h1, g1]] = held, ox = g1.o[0] - g0.o[0], oz = g1.o[2] - g0.o[2];
-    yaw = Math.hypot(ox, oz) > 0.05 ? Math.atan2(oz, ox) - Math.atan2(h1.z - h0.z, h1.x - h0.x) : face + g0.yr;
-  } else yaw = face + held[0][1].yr;
+  // it turns with you (so a big thing never swings round into you), held by the spots your hands are on
+  let cx = 0, cy = 0, cz = 0;
+  const yaw = face + held[0][1].yr;
   for (const [hp, g] of held) { if (!hp) continue; const [ox, oz] = turnY(g.o[0], g.o[2], yaw); cx += hp.x - ox; cy += hp.y - g.o[1]; cz += hp.z - oz; }
   const n = held.filter(h => h[0]).length || 1;
   const x = cx / n, y = cy / n - (it.h || 0.4) * 0.5, z = cz / n;
