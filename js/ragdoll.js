@@ -58,6 +58,7 @@ function ragSubstep(Rg, fx, fz) {
   for (let it = 0; it < 5; it++) {
     for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
     for (let k = 0; k < RAG_BEND.length; k++) ragStick(pos[RAG_BEND[k][0]], pos[RAG_BEND[k][2]], Rg.bend[k], true);
+    ragLimits(pos, Rg);
   }
   // bump into the world: floors, walls (and doorways), the cabin ceiling
   for (let i = 0; i < pos.length; i++) {
@@ -78,9 +79,60 @@ function ragSubstep(Rg, fx, fz) {
       if (p.y > top) { p.y = top; q.y = Math.max(q.y, p.y); }
     }
   }
+  // the floor may have shoved a hand or foot the wrong way: put the joints right again
+  for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
+  ragLimits(pos, Rg);
+  for (let i = 0; i < pos.length; i++) { const g = groundAt(pos[i].x, pos[i].z); if (g !== null && pos[i].y < g + RAG_R[i] && pos[i].y > g - 0.6) pos[i].y = g + RAG_R[i]; }
 }
 // can a body point move from q to p? (high up in the cabin it sails over the seats; only the hull stops it)
 const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x, p.z)) || canGo(q.x, q.z, p.y, p.x, p.z);
+// Joints that only bend the way real ones do, so nobody ends up in a bone-breaking pose:
+// knees only bend backwards and elbows only forwards (no bending the wrong way), legs can't swing up behind
+// the back or cross through each other, and arms can't go through the body.
+const _ja = new THREE.Vector3(), _jf = new THREE.Vector3(), _jx = new THREE.Vector3(), _jr = new THREE.Vector3(), _ju = new THREE.Vector3(), _jb = new THREE.Vector3(), _jd = new THREE.Vector3(), _je = new THREE.Vector3(), _jc = new THREE.Vector3();
+function ragLimits(pos, Rg) {
+  // the torso's own directions: right, up and back
+  _ju.addVectors(pos[1], pos[2]).sub(pos[7]).sub(pos[8]).normalize();
+  _jr.subVectors(pos[2], pos[1]).add(_jd.subVectors(pos[8], pos[7]));
+  _jr.addScaledVector(_ju, -_jr.dot(_ju)).normalize();
+  _jb.crossVectors(_jr, _ju);
+  for (let i = 0; i < 2; i++) {
+    const s = i ? 1 : -1;
+    // hip: the thigh stays in front of / below the body, and doesn't cross far over the other leg
+    limitCone(pos[7 + i], pos[9 + i], Rg.len[14 + i * 2], { side: s, maxIn: 0.25, maxOut: 0.8, maxBack: 0.35, maxUp: 0.75 });
+    // shoulder: arms are loose, but can't go far behind the back or across through the chest
+    limitCone(pos[1 + i], pos[3 + i], Rg.len[10 + i * 2], { side: s, maxIn: 0.35, maxOut: 1, maxBack: 0.6, maxUp: 1 });
+    // knee bends backwards only, elbow forwards only
+    hinge(pos[7 + i], pos[9 + i], pos[11 + i], -1, _jr);
+    // the elbow's hinge turns with the upper arm: it always folds the hand toward the front of the body
+    _ja.subVectors(pos[3 + i], pos[1 + i]).normalize();
+    _jf.copy(_jb).negate().addScaledVector(_ju, 0.3);
+    _jx.crossVectors(_ja, _jf);
+    if (_jx.lengthSq() > 0.09) hinge(pos[1 + i], pos[3 + i], pos[5 + i], 1, _jx.normalize());
+  }
+}
+// keep the bone from joint a to b inside a comfortable range (in the torso's directions), keeping its length
+function limitCone(a, b, len, L) {
+  _jd.subVectors(b, a);
+  let x = _jd.dot(_jr) * L.side, y = _jd.dot(_ju), z = _jd.dot(_jb);   // x: outwards, y: up, z: backwards
+  const n = Math.hypot(x, y, z) || 1; x /= n; y /= n; z /= n;
+  let bad = false;
+  if (x < -L.maxIn) { x = -L.maxIn; bad = true; }
+  if (x > L.maxOut) { x = L.maxOut; bad = true; }
+  if (z > L.maxBack) { z = L.maxBack; bad = true; }
+  if (y > L.maxUp) { y = L.maxUp; bad = true; }
+  if (!bad) return;
+  _jd.set(0, 0, 0).addScaledVector(_jr, x * L.side).addScaledVector(_ju, y).addScaledVector(_jb, z).normalize();
+  b.lerp(_je.copy(a).addScaledVector(_jd, len), 0.9);
+}
+// a hinge (knee or elbow): the lower bone may only fold one way; if it's bent backwards, straighten it out
+function hinge(a, j, e, dir, axis) {
+  _jd.subVectors(j, a); _je.subVectors(e, j);
+  const bend = _jc.crossVectors(_jd, _je).dot(axis) * dir;
+  if (bend >= 0) return;
+  const lenE = _je.length();
+  e.lerp(_jc.copy(j).addScaledVector(_jd.normalize(), lenE), 0.9);
+}
 // push two points to exactly len apart (or, for a "bend", only apart if they're closer than len)
 const _rd = new THREE.Vector3();
 function ragStick(a, b, len, minOnly) {

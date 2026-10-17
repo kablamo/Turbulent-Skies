@@ -343,7 +343,23 @@ function animatePax(p) {
   r.mouth.rotation.z = shocked || p.mood > 45 ? Math.PI : 0;
   r.mouth.scale.set(1, shocked ? 2.4 : 1, 1);
   if (r.prop) r.prop.rotation.y = t * (p.pose === 'flail' ? 40 : 12);
+  // just stopped being a ragdoll: melt from the ragdoll's pose into this one instead of snapping
+  const bl = p.blend;
+  if (bl) {
+    const k = smooth01(clamp((S.t - bl.t0) / 0.6, 0, 1));
+    LIMB_KEYS.forEach((key, n) => r[key].forEach((j, i) => j.quaternion.copy(bl.limbs[n][i]).slerp(_blq.copy(j.quaternion), k)));
+    // (the body may have turned to walk off, so start from the old tilt as seen from the new heading)
+    _blq2.setFromAxisAngle(RAG_Y, bl.yaw - p.g.rotation.y).multiply(bl.core);
+    r.core.quaternion.copy(_blq2).slerp(_blq.identity(), k);
+    p.g.position.addScaledVector(bl.off, 1 - k);
+    if (k >= 1) p.blend = null;
+  }
   if (p.model) poseModel(p);
+}
+const _blq = new THREE.Quaternion(), _blq2 = new THREE.Quaternion();
+// remember the pose right now, so the next half second can blend away from it
+function startPoseBlend(p, oldPos) {
+  p.blend = { t0: S.t, limbs: captureLimbs(p), core: p.rig.core.quaternion.clone(), yaw: p.g.rotation.y, off: oldPos.clone().sub(p.g.position) };
 }
 // speech bubbles over people's heads
 const bubbleCache = {};
@@ -381,6 +397,7 @@ function ragdoll(p, vx, vy, vz) {
   p.state = 'air'; p.pose = 'frozen';                       // the physics moves the limbs now, not an animation
   p.vx = vx; p.vy = vy; p.vz = vz;
   p.spin = { x: rand(-7, 7), z: rand(-7, 7) };
+  p.blend = null;
   startRag(p, vx, vy, vz);
   shout(p, pick(YELLS.thrown));
   slideWhistle(true);
@@ -404,7 +421,7 @@ function freeSlot(it) { if (it.slot) { it.slot.item = null; it.slot = null; } }
 // `who` is whoever grabbed it: LOCAL (you) or a remote player
 function pickUp(obj, who = LOCAL) {
   if (obj.kind === 'pax') {
-    obj.rag = null;   // grabbed out of a ragdoll heap
+    obj.rag = null; obj.blend = null;   // grabbed out of a ragdoll heap
     if (obj.seat) { obj.seat.occupant = null; obj.seat = null; }
     if (obj.busSeat) { obj.busSeat.p = null; obj.busSeat = null; }
     if (obj.state === 'seated' && inAir()) { S.needs.calm -= 4; say(`${obj.name}: "Put me DOWN!"`); }
@@ -681,7 +698,7 @@ function walkToward(p, tx, tz, speed, dt) {
       const bx = p.x + ux * st, bz = p.z + uz * st;
       if (!canGo(p.x, p.z, p.y, bx, bz) || npcAt(p, bx, bz)) continue;
       p.x = bx; p.z = bz; p.stuckT = 0;
-      p.g.rotation.set(0, Math.atan2(-ux, -uz), 0);
+      p.g.rotation.set(0, turnToward(p.g.rotation.y, Math.atan2(-ux, -uz), 4 * dt), 0);   // turn smoothly, don't snap round
       stepGait(p, st, speed);
       return Math.hypot(tx - p.x, tz - p.z) < 0.06;
     }
@@ -690,7 +707,7 @@ function walkToward(p, tx, tz, speed, dt) {
   }
   if (p.ghostT > 0) p.ghostT -= dt;
   p.x += dx / d * st; p.z += dz / d * st;
-  p.g.rotation.set(0, Math.atan2(-dx, -dz), 0);
+  p.g.rotation.set(0, turnToward(p.g.rotation.y, Math.atan2(-dx, -dz), 4 * dt), 0);
   stepGait(p, st, speed);
   return d - st < 0.06;
 }
@@ -740,9 +757,12 @@ function stepPassenger(p, dt) {
   }
   if (p.state === 'getup' && p.rag) {
     if (stepGetUp(p, dt)) {
-      const t = p.rag.targets, pel = ragMid(t, 7, 8);
-      p.rag = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85;
+      const t = p.rag.targets, pel = ragMid(t, 7, 8), was = p.g.position.clone();
+      p.rag = null; p.rig.core.position.y = 0.85;
+      p.vx = p.vy = p.vz = 0;   // (forget the speed they were thrown at, or they'd take off again)
+      const gy = groundAt(pel.x, pel.z); if (gy !== null) p.y = gy;
       p.x = pel.x; p.z = pel.z; p.g.position.set(p.x, p.y, p.z);
+      startPoseBlend(p, was);
       p.pose = 'stand'; landed(p); animatePax(p);
     }
     return;
@@ -779,7 +799,7 @@ function stepPassenger(p, dt) {
       const st = Math.min(d, 1.0 * dt);
       if (npcAt(p, p.x + dx / d * st, p.z + dz / d * st)) p.wanderT = 0;   // someone's in the way: go somewhere else
       else { const [hx, hz] = moveBody(p, dx / d * st, dz / d * st); if (hx || hz) p.wanderT = 0; }
-      p.g.rotation.set(0, Math.atan2(-dx, -dz), 0); stepGait(p, st, 1.0);
+      p.g.rotation.set(0, turnToward(p.g.rotation.y, Math.atan2(-dx, -dz), 4 * dt), 0); stepGait(p, st, 1.0);
     }
     fallBody(p, dt);
     p.g.position.set(p.x, p.y, p.z);

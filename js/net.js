@@ -415,9 +415,12 @@ function netAnimate(dt) {
       mapRag(p, p.cliRag, p.net.ry);
       p.x = p.g.position.x; p.z = p.g.position.z;
       animatePax(p);
+      p.hadRag = true;
       continue;
     }
     p.ragFresh = true;
+    // the ragdoll just ended: blend out of it smoothly here too
+    if (p.hadRag) { p.hadRag = false; startPoseBlend(p, p.g.position); }   // (the position already glides over by itself here)
     lerpTo(p.g.position, p.net.x, p.net.y, p.net.z, dt);
     p.g.rotation.set(0, p.net.ry, 0);
     p.rig.core.rotation.set(p.net.crx, 0, p.net.crz);
