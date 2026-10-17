@@ -266,7 +266,7 @@ const FP = { arms: [], wasHolding: false, pickT: 9, throwT: 9 };
     const cuff = cyl(0.08, 0.08, 0.05, gold, 0, 0, -0.07, hand); cuff.rotation.x = Math.PI / 2;
     sph(0.075, skin, 0, 0, 0, hand, [1.1, 0.8, 1.3]);
     sph(0.03, skin, s * -0.06, 0.03, 0.02, hand, [1, 1, 1.6]);                               // thumb
-    FP.arms.push({ s, arm, hand, shoulder: new THREE.Vector3(s * 0.3, -0.45, 0.1) });
+    FP.arms.push({ s, arm, hand, shoulder: new THREE.Vector3(s * 0.3, -0.38, 0.1) });
   }
 })();
 const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _Zf = new THREE.Vector3(0, 0, 1), _hw = new THREE.Vector3();
@@ -288,7 +288,7 @@ function updateFPArms(dt) {
     if (pushing) {
       // hands on the trolley's handle bar, wherever you look
       const w = vehPoint(v, a.s * 0.33, 0.85);
-      camera.worldToLocal(_hand.set(w.x, GROUND + 1.27, w.z));
+      camera.worldToLocal(_hand.set(w.x, GROUND + 1.34, w.z));
     } else {
       // hands on either side of the bag (or under the person lying across your arms)
       if (bag) _hand.set(bagAt.x + a.s * (clamp(bag.hw, 0.15, 0.8) + 0.04), bagAt.y + bag.h * 0.35, bagAt.z);

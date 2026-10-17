@@ -222,7 +222,7 @@ function fitCurls(g) {
   if (old.isEmpty()) return g;
   const nc = nb.getCenter(new THREE.Vector3()), oc = old.getCenter(new THREE.Vector3());
   const inPlace = Math.abs(nc.x - oc.x) < 0.15 && nb.min.y < old.max.y - 0.1;
-  if (!inPlace) for (const o of g.children) o.position.add(new THREE.Vector3(oc.x - nc.x, old.min.y + 0.07 - nb.min.y, oc.z - 0.045 - nc.z));
+  if (!inPlace) for (const o of g.children) o.position.add(new THREE.Vector3(oc.x - nc.x, old.min.y - 0.03 - nb.min.y, oc.z - 0.045 - nc.z));
   for (const o of g.children) o.userData.tint = true;   // it takes each person's hair colour
   return g;
 }

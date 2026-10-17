@@ -270,7 +270,7 @@ function animatePax(p) {
       // arms out in front (both hands on the trolley handle, or holding something), legs walking when moving
       const s = p.moving ? Math.sin(p.walkT * 8) : 0;
       th = [s * 0.45, -s * 0.45]; sh = [-Math.max(0, s) * 0.6, -Math.max(0, -s) * 0.6];
-      if (p.pose === 'push') { ar = [1.25, 1.25]; fo = [0.35, 0.35]; az = [0.05, 0.05]; }
+      if (p.pose === 'push') { ar = [1.75, 1.75]; fo = [0.1, 0.1]; az = [0.05, 0.05]; }   // up and forward onto the handle bar
       else { ar = [1.05, 1.05]; fo = [0.5, 0.5]; az = [0.3, 0.3]; hy += Math.abs(s) * 0.03; }
       break;
     }
