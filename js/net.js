@@ -197,7 +197,7 @@ function hostOnData(r, m) {
       break;
     case 'me':
       if (!r.driving && S.pilotRP !== r && !r.carriedBy) Object.assign(r.pose, { x: m.x, y: m.y, z: m.z });
-      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.pose.face = m.face; r.pose.tp = m.tp; r.rg = m.rg || null; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
+      r.pose.yaw = m.yaw; r.pose.pitch = m.pitch; r.pose.face = m.face; r.pose.tp = m.tp; r.rg = m.rg || null; r.grab = m.grab || null; r.keys = m.keys || {}; r.air = !!m.air; r.sit = !!m.seat;
       break;
     case 'act': {
       const ud = hostRef(m.ref); if (!ud) return;
@@ -523,7 +523,7 @@ function netUpdate(dt) {
   if (NET.mode === 'client') {
     const k = {};
     for (const key of ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']) if (keys[key]) k[key] = true;
-    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), face: r2(P.face), tp: S.view === 'third' ? 1 : 0, rg: ragFlat(ME && ME.rag), keys: k, air: !!P.launched, seat: !!P.sitV });
+    netSend({ t: 'me', x: r2(P.x), y: r2(P.sitV ? P.sitV.floor : P.y), z: r2(P.z), yaw: r2(P.yaw), pitch: r2(P.pitch), face: r2(P.face), tp: S.view === 'third' ? 1 : 0, rg: ragFlat(ME && ME.rag), grab: GRAB.hands, keys: k, air: !!P.launched, seat: !!P.sitV });
   }
 }
 // the host keeps sending snapshots even before it clicks "Start playing"

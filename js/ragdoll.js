@@ -86,6 +86,8 @@ function ragSubstep(Rg, fx, fz) {
   // the floor may have shoved a hand or foot the wrong way: put the joints right again
   for (let k = 0; k < RAG_STICKS.length; k++) ragStick(pos[RAG_STICKS[k][0]], pos[RAG_STICKS[k][1]], Rg.len[k], false);
   for (let i = 0; i < pos.length; i++) { const g = groundAt(pos[i].x, pos[i].z); if (g !== null && pos[i].y < g + RAG_R[i] && pos[i].y > g - 0.6) { prev[i].y += g + RAG_R[i] - pos[i].y; pos[i].y = g + RAG_R[i]; } }
+  // pinned points (a hand gripping something, or a wrist someone else is holding) go exactly where they're held
+  if (Rg.pins) for (const pin of Rg.pins) pos[pin.i].copy(pin.pos);
 }
 // can a body point move from q to p? (high up in the cabin it sails over the seats; only the hull stops it)
 const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x, p.z)) || canGo(q.x, q.z, p.y, p.x, p.z);
@@ -257,7 +259,7 @@ function stepGetUp(p, dt) {
 const ACTIVE_KW = [0.55, 0.8, 0.8, 0.3, 0.3, 0.22, 0.22, 1, 1, 0.55, 0.55, 0.6, 0.6];
 const ACTIVE_K = 170, ACTIVE_DAMP = 9;
 const _zero = () => new THREE.Vector3();
-function activeRag(a, dt, yaw) {
+function activeRag(a, dt, yaw, adjust) {
   dt = Math.max(dt, 1e-3);
   const goal = ragPoints(a);                                 // where the animation has put each point this frame
   let Rg = a.rag;
@@ -267,11 +269,13 @@ function activeRag(a, dt, yaw) {
     startRag(a, 0, 0, 0); Rg = a.rag;
     Rg.pos.forEach((v, i) => { v.copy(goal[i]); Rg.prev[i].copy(goal[i]); });
     Rg.tv = goal.map(_zero); Rg.targets = goal; Rg.ramp = 1;
+    a.feet = null; a.comPrev = null; a.comV = null;   // (and the feet start fresh under you)
   }
+  if (adjust) adjust(goal);                                  // stepping feet, reaching hands…
   // how fast each target is moving (so the springs don't make you trail behind when walking)
   Rg.tv = goal.map((t, i) => Rg.targets ? t.clone().sub(Rg.targets[i]).divideScalar(dt) : _zero());
   if (Rg.tv.some(v => v.lengthSq() > 400)) Rg.tv = goal.map(_zero);
-  Rg.targets = goal; Rg.kw = ACTIVE_KW;
+  Rg.targets = goal; Rg.kw = a.kwOverride || ACTIVE_KW;
   // springs: off while limp, then fading back in as you get up
   if (Rg.limp) Rg.ramp = 0; else Rg.ramp = Math.min(1, (Rg.ramp || 0) + dt / 0.9);
   const r = Rg.ramp * Rg.ramp;
@@ -284,4 +288,72 @@ function goLimp(a, vx = 0, vy = 0, vz = 0) {
   const Rg = a.rag; if (!Rg) return;
   if (!Rg.limp && (vx || vy || vz)) Rg.prev.forEach((q, i) => q.copy(Rg.pos[i]).sub(new THREE.Vector3(vx, vy, vz).multiplyScalar(RAG_H)));
   Rg.limp = true; Rg.limpT = 0; Rg.still = 0;
+}
+
+// ---------------------------------------------------------------- stepping to keep your balance
+// The feet aren't animated: each one stays planted where it is. Every frame we work out where the body's
+// weight is heading (the "capture point": the centre of mass plus a bit of its speed). If that drifts too
+// far from between the feet, one foot swings out to catch you, landing a little ahead of where you're falling.
+// Walking falls out of this by itself: you lean into moving, start to topple, and your feet keep catching you.
+// Get shoved by someone and the same thing makes you stumble.
+const _bc = new THREE.Vector3(), _bv = new THREE.Vector3();
+function footHeight(a) { if (a.footH === undefined) a.footH = standPoints(a, 0, 0, 0, 0)[11].y; return a.footH; }
+function balanceFeet(a, goal, dt, yaw, onGround) {
+  const Rg = a.rag, sc = a.g.scale.y, fh = footHeight(a);
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  // where each foot would be standing comfortably: under its hip (the real one, where the body actually is)
+  const spot = (i, x, z) => { const g = groundAt(x, z); return new THREE.Vector3(x, (g === null ? P.y : g) + fh, z); };
+  const home = i => { const h = Rg.pos[7 + i], s = i ? 1 : -1; return spot(i, h.x + rx * s * 0.03, h.z + rz * s * 0.03); };
+  const lost = a.feet && a.feet.some((f, i) => Math.hypot(f.pos.x - Rg.pos[7 + i].x, f.pos.z - Rg.pos[7 + i].z) > 2);
+  if (!a.feet || lost || Rg.limp || !onGround) {
+    // limp or in the air: the legs just do what they do; once back down, the feet start from where they are
+    a.feet = [0, 1].map(i => ({ pos: spot(i, Rg.pos[11 + i].x, Rg.pos[11 + i].z), swing: null }));
+    a.balT = 0;
+    if (Rg.limp || !onGround) return;
+  }
+  // centre of mass (mostly the hips and chest) and how fast it's moving
+  _bc.copy(Rg.pos[7]).add(Rg.pos[8]).multiplyScalar(0.25).addScaledVector(Rg.pos[1], 0.17).addScaledVector(Rg.pos[2], 0.17).addScaledVector(Rg.pos[0], 0.16);
+  if (a.comPrev) _bv.subVectors(_bc, a.comPrev).divideScalar(dt); else _bv.set(0, 0, 0);
+  a.comV = a.comV ? a.comV.lerp(_bv, Math.min(1, dt * 12)) : _bv.clone();
+  a.comPrev = (a.comPrev || new THREE.Vector3()).copy(_bc);
+  const speed = Math.hypot(a.comV.x, a.comV.z);
+  const cpx = _bc.x + a.comV.x * 0.28, cpz = _bc.z + a.comV.z * 0.28;   // where the weight is going
+  const F = a.feet, supX = (F[0].pos.x + F[1].pos.x) / 2, supZ = (F[0].pos.z + F[1].pos.z) / 2;
+  const offX = cpx - supX, offZ = cpz - supZ, off = Math.hypot(offX, offZ);
+  const swinging = F.some(f => f.swing);
+  a.balT = (a.balT || 0) + dt;
+  if (!swinging) {
+    const fromHome = F.map((f, i) => { const h = home(i); return Math.hypot(f.pos.x - h.x, f.pos.z - h.z); });
+    const fall = off > 0.14 * sc, stray = Math.max(...fromHome) > 0.42 * sc, tidy = speed < 0.25 && Math.max(...fromHome) > 0.09 * sc && a.balT > 0.35;
+    if (fall || stray || tidy) {
+      // step with the foot that's furthest behind the way you're falling (or furthest out of place)
+      let i;
+      if (fall) { const d0 = (F[0].pos.x - supX) * offX + (F[0].pos.z - supZ) * offZ, d1 = (F[1].pos.x - supX) * offX + (F[1].pos.z - supZ) * offZ; i = d0 <= d1 ? 0 : 1; }
+      else i = fromHome[0] >= fromHome[1] ? 0 : 1;
+      if (a.lastFoot === i && !fall && fromHome[1 - i] > 0.09 * sc) i = 1 - i;   // take turns
+      const h = home(i), lead = 0.3;
+      let tx = h.x + a.comV.x * lead, tz = h.z + a.comV.z * lead;
+      const fp = F[i].pos, len = Math.hypot(tx - fp.x, tz - fp.z), max = 1.5 * sc;
+      if (len > max) { tx = fp.x + (tx - fp.x) * max / len; tz = fp.z + (tz - fp.z) * max / len; }
+      F[i].swing = { from: fp.clone(), to: spot(i, tx, tz), t: 0, dur: clamp(0.3 - speed * 0.03, 0.13, 0.3) };
+      a.lastFoot = i; a.balT = 0;
+    }
+  }
+  for (let i = 0; i < 2; i++) {
+    const f = F[i];
+    if (f.swing) {
+      const w = f.swing; w.t += dt;
+      const k = Math.min(1, w.t / w.dur);
+      f.pos.lerpVectors(w.from, w.to, k); f.pos.y += Math.sin(Math.PI * k) * 0.13 * sc;   // lift the foot as it swings
+      if (k >= 1) { f.pos.copy(w.to); f.swing = null; }
+    }
+    goal[11 + i].copy(f.pos);
+    // the knee: bend it forwards so the leg reaches from the hip to wherever the foot is
+    const H = goal[7 + i], L1 = Rg.len[14 + i * 2], L2 = Rg.len[15 + i * 2];
+    _bv.subVectors(f.pos, H); let d = _bv.length() || 1e-3; _bv.divideScalar(d); d = Math.min(d, L1 + L2 - 1e-3);
+    const along = (L1 * L1 - L2 * L2 + d * d) / (2 * d), up = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+    const bx = fx - _bv.x * (fx * _bv.x + fz * _bv.z), by = -_bv.y * (fx * _bv.x + fz * _bv.z), bz = fz - _bv.z * (fx * _bv.x + fz * _bv.z);
+    const bl = Math.hypot(bx, by, bz) || 1;
+    goal[9 + i].set(H.x + _bv.x * along + bx / bl * up, H.y + _bv.y * along + by / bl * up, H.z + _bv.z * along + bz / bl * up);
+  }
 }

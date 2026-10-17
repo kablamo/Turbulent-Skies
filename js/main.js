@@ -303,7 +303,7 @@ function update(dt) {
     camera.rotation.set(P.pitch, P.yaw, 0);
   }
   plane.updateMatrixWorld(true);
-  if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); hostCarry(); netShoveBags(dt); chatter(dt); }
+  if (H) { updateItems(dt); updatePassengers(dt); updateHeld(); hostCarry(); hostGrabs(dt); netShoveBags(dt); chatter(dt); }
   else netAnimate(dt);
   updateAvatars(dt);
   updateMe(dt);
@@ -564,7 +564,9 @@ function updateMe(dt) {
     }
   }
   poseAvatar(ME, { ...d, yaw: P.face }, dt);     // the animation: where the body *wants* to be
-  activeRag(ME, dt, P.face);                      // the physics: where it actually is
+  const g = groundAt(P.x, P.z), onGround = g !== null && P.y <= g + 0.06 && !S.driving;
+  activeRag(ME, dt, P.face, goal => { if (!S.driving) balanceFeet(ME, goal, dt, P.face, onGround); reachHands(goal); });   // the physics: where it actually is
+  updateGrab();
   if (ME.model) poseModel(ME);
 }
 

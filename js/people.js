@@ -713,8 +713,9 @@ function walkToward(p, tx, tz, speed, dt) {
 }
 function stepPassenger(p, dt) {
   if (p.state === 'air' && p.rag) {
-    const done = updateRagdoll(p, dt);
-    if (groundAt(p.x, p.z) === null && p.y < -3) return ejectPassenger(p);
+    const held = p.rag.pins && p.rag.pins.length;   // someone's dragging them about by a wrist or an ankle
+    const done = updateRagdoll(p, dt) && !held;
+    if (groundAt(p.x, p.z) === null && p.y < -3 && !held) return ejectPassenger(p);
     if (done) {
       if (inAir() && !insideHull(p.x, p.z) && !onRamp(p.x, p.z)) { p.rag = null; p.rig.core.quaternion.identity(); return landed(p); }
       p.state = 'down'; p.downT = rand(2, 3);

@@ -41,7 +41,7 @@ function actionFor(ud, who = LOCAL) {
   if (ud.drive) return S.phase === 'airport' ? { key: 'drive', type: 'press', ready: true, label: ud.drive.push ? `Grab the ${ud.drive.name} and push it` : `Sit down and drive the ${ud.drive.name}`, done: () => enterVehicle(ud.drive, who) } : null;
   if (ud.item) {
     const it = ud.item;
-    if (it.state === 'gone' || it.state === 'queue' || it.state === 'held') return null;
+    if (it.state === 'gone' || it.state === 'queue' || it.state === 'held' || it.state === 'grabbed') return null;
     return { key: 'pick', type: 'press', ready: true, label: `Pick up the ${it.name}`, done: () => pickUp(it, who) };
   }
   if (ud.passenger) {
@@ -394,6 +394,7 @@ function helpHTML() {
       <tr><th colspan="2">Game</th></tr>
       <tr><td>${k_('P')}</td><td>Pause</td></tr>
       <tr><td>${k_('Enter')} or ${k_('P')}</td><td>Resume</td></tr>
+      <tr><td>Hold ${k_('G')} or right mouse</td><td>Reach out and grab: bags, passengers (they go floppy), or hang on to walls</td></tr>
       <tr><td>Hold ${k_('R')}</td><td>Go floppy (you're a ragdoll!) — let go to get back up</td></tr>
       <tr><td>${k_('V')}</td><td>Switch between third person and first person</td></tr>
       <tr><td>${k_('H')}</td><td>This help screen</td></tr>

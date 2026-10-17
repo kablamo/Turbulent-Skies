@@ -181,8 +181,8 @@ function updatePlayer(dt) {
   if (S.view !== 'third') P.face = P.yaw;
   else if (spd > 0.4) P.face = turnToward(P.face, Math.atan2(-mx, -mz), 9 * dt);
   else if (S.held || carryingName()) P.face = turnToward(P.face, P.yaw, 5 * dt);
-  if (S.phase !== 'airport') {
-    // the wind wants you off the plane; standing still lets you brace against it
+  if (S.phase !== 'airport' && !holdingWall()) {
+    // the wind wants you off the plane; standing still lets you brace against it (or hang on to something: G)
     if (!insideHull(P.x, P.z)) { mz += (len > 0 ? 1.3 : 0.2) + S.turb * 2.5; mx += S.gust * (len > 0 ? 1 : 0.4); }
     else mx += S.gust * 0.3;
     cabinForces(P, force);
@@ -190,6 +190,18 @@ function updatePlayer(dt) {
   }
   if (P.launched) { mx += P.lvx; mz += P.lvz; }   // thrown by another player
   moveBody(P, mx * dt, mz * dt);
+  // hanging on to something: you can't get further away than your arms reach
+  const wall = GRAB.hands.find(h => h && h.k === 'wall');
+  if (wall) { const dx = P.x - wall.at[0], dz = P.z - wall.at[2], dd = Math.hypot(dx, dz), reach = 0.95; if (dd > reach) { P.x = wall.at[0] + dx / dd * reach; P.z = wall.at[2] + dz / dd * reach; } }
+  // people are solid: you bump into them (and the bump knocks your ragdoll off balance, so you stumble)
+  for (const q of passengers) {
+    if (!ON_FOOT.has(q.state) || Math.abs(q.y - P.y) > 1) continue;
+    const dx = P.x - q.x, dz = P.z - q.z, dd = Math.hypot(dx, dz), min = 0.48;
+    if (dd >= min || dd < 1e-3) continue;
+    const push = min - dd;
+    if (canGo(P.x, P.z, P.y, P.x + dx / dd * push, P.z + dz / dd * push)) { P.x += dx / dd * push; P.z += dz / dd * push; }
+    if (ME && ME.rag && !ME.rag.limp) for (const i of [0, 1, 2, 7, 8]) { ME.rag.pos[i].x += dx / dd * push * 0.6; ME.rag.pos[i].z += dz / dd * push * 0.6; }
+  }
 
   // shove any luggage you walk into
   for (const it of items) {
