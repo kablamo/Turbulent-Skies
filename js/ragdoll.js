@@ -224,6 +224,6 @@ function stepGetUp(p, dt) {
   mapRag(p, Rg.pos, Rg.yaw);
   let err = 0, fast = 0;
   for (let i = 0; i < Rg.pos.length; i++) { err = Math.max(err, Rg.pos[i].distanceTo(Rg.targets[i])); fast = Math.max(fast, Rg.pos[i].distanceTo(Rg.prev[i]) / RAG_H); }
-  Rg.done = err < 0.16 && fast < 0.4 ? Rg.done + dt : 0;
+  Rg.done = err < 0.25 && fast < 0.45 ? Rg.done + dt : 0;
   return Rg.done > 0.12 || Rg.upT > 4;
 }
