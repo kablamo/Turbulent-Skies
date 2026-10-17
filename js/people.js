@@ -742,8 +742,8 @@ function stepPassenger(p, dt) {
   }
   if (p.state === 'getup' && p.rag) {
     p.getT += dt;
-    const k = getupLimbs(p, p.ragUp.limbs, p.getT);
-    ragGetUp(p, k);
+    getupLimbs(p, p.ragUp.limbs, p.getT);
+    ragGetUp(p, p.getT);
     if (p.getT >= GETUP_T) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85; p.pose = 'stand'; landed(p); animatePax(p); }
     return;
   }
