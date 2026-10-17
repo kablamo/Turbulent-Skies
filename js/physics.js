@@ -204,6 +204,18 @@ function updatePlayer(dt) {
     bowlOver(v, pose.x, pose.z, pose.h, P.mvx * 1.3, P.mvz * 1.3);
     if (!vehicleFits(v, pose.x, pose.z, pose.h)) { const o = vehicleBumped(v, pose.x, pose.z, pose.h); if (o) shoveVehicle(o, pose.x - v.x, pose.z - v.z); }
     if (!vehicleFits(v, pose.x, pose.z, pose.h)) { P.x = was.x; P.z = was.z; if (!vehicleFits(v, ...Object.values(carriedVehiclePose(vg, P.x, P.z, P.face)))) P.face = P.prevFace ?? P.face; }
+    // it shoves bags out of its way (knocking them out of the pile) instead of rolling through them
+    const now = carriedVehiclePose(vg, P.x, P.z, P.face);
+    if (!isClient()) for (const it of items) {
+      if (!(it.state === 'pile' || it.state === 'free') || it.y > v.bedTop + 0.6) continue;
+      const l = vehLocal(now, it.x, it.z), padX = v.w + (it.r || 0.3) * 0.7, padZ = v.l + (it.r || 0.3) * 0.7;
+      if (Math.abs(l.x) >= padX || Math.abs(l.z) >= padZ) continue;
+      const ex = padX - Math.abs(l.x), ez = padZ - Math.abs(l.z), [ox, oz] = ex < ez ? turnY((Math.sign(l.x) || 1) * ex, 0, now.h) : turnY(0, (Math.sign(l.z) || 1) * ez, now.h);
+      if (it.state === 'pile') { it.state = 'free'; it.vy = 0; }
+      it.x += ox; it.z += oz; it.vx = P.mvx + ox * 8; it.vz = P.mvz + oz * 8;
+    }
+    // on a client, move the trolley in your hands right away (the host agrees a moment later)
+    if (isClient() && vehicleFits(v, now.x, now.z, now.h)) { v.x = now.x; v.z = now.z; v.h = now.h; syncVehicle(v); }
   }
   P.prevFace = P.face;
   // walked into a vehicle: give it a shove (a trolley rolls away from you; the bus rocks a little)

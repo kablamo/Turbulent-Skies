@@ -347,8 +347,9 @@ function applySnap(m) {
   [doors.L.target, doors.R.target, doors.L.open, doors.R.open, lavDoors.L.target, lavDoors.R.target, lavDoors.L.open, lavDoors.R.open, ramp.target, ramp.open, bus.door.target, bus.door.open] = d;
   m.V.forEach(([x, z, h], i) => {
     const v = vehicles[i];
-    if (v === S.driving) P.yaw += h - v.h;    // your view turns with the vehicle you're driving
-    Object.assign(v, { x, z, h }); syncVehicle(v);
+    if (v === heldVehicle()) return;          // the trolley in your hands goes where you take it (physics.js), no waiting
+    if (v === S.driving) { P.yaw += h - v.h; Object.assign(v, { x, z, h }); syncVehicle(v); return; }   // your view turns with the vehicle you're driving
+    v.net = { x, z, h };                      // everything else glides there (netAnimate) instead of jumping 15 times a second
   });
   // luggage (new eggs appear as the chicken lays them)
   while (items.length < m.I.length) spawnBag(BAGS.egg);
@@ -412,6 +413,12 @@ function netApplyPlane(dt) {
   plane.position.set(inAir() ? PW.x : 0, inAir() ? PW.y : 0, 0);
 }
 function netAnimate(dt) {
+  for (const v of vehicles) if (v.net && v !== S.driving && v !== heldVehicle()) {
+    const k = Math.min(1, dt * 12), dh = Math.atan2(Math.sin(v.net.h - v.h), Math.cos(v.net.h - v.h));
+    if (Math.hypot(v.net.x - v.x, v.net.z - v.z) > 4) { v.x = v.net.x; v.z = v.net.z; v.h = v.net.h; }
+    else { v.x += (v.net.x - v.x) * k; v.z += (v.net.z - v.z) * k; v.h += dh * k; }
+    syncVehicle(v);
+  }
   for (const it of items) if (it.net && it.state !== 'gone') {
     lerpTo(it.g.position, it.net.x, it.net.y, it.net.z, dt);
     it.g.rotation.set(0, it.net.ry, 0);
