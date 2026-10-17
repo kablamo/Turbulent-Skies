@@ -11,7 +11,7 @@ function boarding() {
   const pax = passengers.filter(p => p.state !== 'gone'), bags = items.filter(i => i.state !== 'gone' && !i.extra);
   return {
     seated: pax.filter(p => p.state === 'seated').length, pax: pax.length,
-    loaded: bags.filter(i => i.state === 'free' && insideHull(i.x, i.z) && i.z > CARGO - 0.3).length, bags: bags.length,
+    loaded: Math.min(BAGS_NEEDED, bags.filter(i => i.state === 'free' && insideHull(i.x, i.z) && i.z > CARGO - 0.3).length), bags: Math.min(BAGS_NEEDED, bags.length),
     rampUp: ramp.target === 0 && ramp.open < 0.01, doorsShut: doors.L.open < 0.01 && doors.R.open < 0.01,
   };
 }
@@ -39,6 +39,7 @@ function actionFor(ud, who = LOCAL) {
     if (s.p || s.player) return { type: 'info', label: 'Someone is already sitting there.' };
     return { key: 'vseat', type: 'press', ready: true, local: true, label: `Sit down in the ${v.name}`, done: () => sitInVehicle(v, s) };
   }
+  if (ud.drive && ud.drive.push) return S.phase === 'airport' ? { key: 'grab', type: 'grab', ready: true, label: `grab the ${ud.drive.name} (then walk to push or pull it)` } : null;
   if (ud.drive) return S.phase === 'airport' ? { key: 'drive', type: 'press', ready: true, label: ud.drive.push ? `Grab the ${ud.drive.name} and push it` : `Sit down and drive the ${ud.drive.name}`, done: () => enterVehicle(ud.drive, who) } : null;
   if (ud.item) {
     const it = ud.item;

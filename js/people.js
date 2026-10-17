@@ -411,8 +411,35 @@ const PAX_COUNT = 8;
     p.y = GROUND; p.tx = p.x; p.tz = p.z;
     passengers.push(p);
   }
-  for (const k of MANIFEST) spawnBag(BAGS[k]);
+  // the luggage waits in a big heap at the end of the conveyor: far more than the flight needs, so there's
+  // always one in reach. Any BAGS_NEEDED of them in the cargo bay will do.
+  const spare = ['suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase',
+    'backpack', 'briefcase', 'suitcase', 'backpack', 'suitcase', 'briefcase', 'backpack', 'suitcase'];
+  for (const k of [...MANIFEST, ...spare]) spawnBag(BAGS[k]);
+  buildPile();
 })();
+const BAGS_NEEDED = 12;
+// stack the bags into a heap: a wide bottom layer, smaller layers on top. Each bag remembers the ones it's
+// resting on; take one of those away and it tumbles down.
+function buildPile() {
+  const cx = BELT_X - 1.6, cz = BELT_END - 2.2, list = items.filter(i => !i.extra);
+  const layers = [], per = [14, 9, 5, 2];
+  let n = 0;
+  for (let L = 0; L < per.length && n < list.length; L++) {
+    const ring = [], count = Math.min(per[L], list.length - n), rad = [1.35, 0.95, 0.55, 0.2][L];
+    for (let k = 0; k < count; k++, n++) {
+      const it = list[n], a = k / count * Math.PI * 2 + L * 0.7, r = rad * (0.55 + (k % 3) * 0.22);
+      it.x = cx + Math.cos(a) * r; it.z = cz + Math.sin(a) * r;
+      // sit on top of whatever's underneath here
+      const under = (layers[L - 1] || []).filter(o => Math.hypot(o.x - it.x, o.z - it.z) < (o.r + it.r) * 0.95);
+      it.y = GROUND + (under.length ? Math.max(...under.map(o => o.y + o.h * 0.85)) : 0);
+      it.pileUnder = under; it.state = 'pile'; it.spinY = rand(0, 6.3);
+      it.g.visible = true; it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
+      ring.push(it);
+    }
+    layers.push(ring);
+  }
+}
 
 // ---------------------------------------------------------------- carrying & throwing
 const fwd = new THREE.Vector3();
@@ -516,6 +543,10 @@ function crocBreaksOut(it) {
 function updateItems(dt) {
   if (S.phase === 'airport') updateConveyor(dt);
   for (const it of items) {
+    if (it.state === 'pile') {
+      if (it.pileUnder.length && it.pileUnder.every(o => o.state !== 'pile')) { it.state = 'free'; it.vx = rand(-0.5, 0.5); it.vz = rand(-0.5, 0.5); it.vy = 0; }
+      else continue;
+    }
     if (it.caged && it.state !== 'queue' && it.state !== 'belt' && it.state !== 'gone') {
       if (it.breakOut === undefined) it.breakOut = rand(50, 100);
       const ud = it.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.max(0, Math.sin(S.t * 4 + it.phase)) * 0.4;

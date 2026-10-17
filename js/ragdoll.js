@@ -66,7 +66,10 @@ function ragSubstep(Rg, fx, fz) {
   // bump into the world: floors, walls (and doorways), the cabin ceiling
   for (let i = 0; i < pos.length; i++) {
     const p = pos[i], q = prev[i], r = RAG_R[i];
-    if ((p.x !== q.x || p.z !== q.z) && !ragCanGo(q, p)) {
+    S.ignoreVeh = i >= 3 && i <= 6 ? Rg.ignoreVeh : null;   // (your hands can be on the trolley you're holding)
+    const blocked = (p.x !== q.x || p.z !== q.z) && !ragCanGo(q, p);
+    S.ignoreVeh = null;
+    if (blocked) {
       // a wall: stop sideways and bounce back a little
       const bx = q.x - (p.x - q.x) * 0.3, bz = q.z - (p.z - q.z) * 0.3;
       p.x = q.x; p.z = q.z; q.x = p.x - (bx - q.x); q.z = p.z - (bz - q.z);
@@ -364,8 +367,11 @@ function balanceFeet(a, goal, dt, yaw, onGround) {
       if (k >= 1) { f.pos.copy(w.to); f.swing = null; }
     }
     goal[11 + i].copy(f.pos);
-    // the knee: bend it forwards so the leg reaches from the hip to wherever the foot is
+    // the knee: straight above the foot, so the lower leg stays upright and the shoe sits flat on the ground
+    // (the model has no ankle: its shoe turns with the lower leg). Only if that can't work, bend it forwards.
     const H = goal[7 + i], L1 = Rg.len[14 + i * 2], L2 = Rg.len[15 + i * 2];
+    const kx = f.pos.x, ky = f.pos.y + L2, kz = f.pos.z, toHip = Math.hypot(H.x - kx, H.y - ky, H.z - kz);
+    if (toHip < L1 * 1.15 && ky < H.y) { goal[9 + i].set(kx, ky, kz); continue; }
     _bv.subVectors(f.pos, H); let d = _bv.length() || 1e-3; _bv.divideScalar(d); d = Math.min(d, L1 + L2 - 1e-3);
     const along = (L1 * L1 - L2 * L2 + d * d) / (2 * d), up = Math.sqrt(Math.max(0, L1 * L1 - along * along));
     const bx = fx - _bv.x * (fx * _bv.x + fz * _bv.z), by = -_bv.y * (fx * _bv.x + fz * _bv.z), bz = fz - _bv.z * (fx * _bv.x + fz * _bv.z);

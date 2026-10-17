@@ -51,6 +51,7 @@ function vehicleZoneAt(v, x, z) {
 }
 function vehicleBlocks(x, z, y) {
   for (const v of vehicles) {
+    if (v === S.ignoreVeh) continue;   // (the trolley you're holding doesn't get in your own way)
     const l = vehLocal(v, x, z);
     if (Math.abs(l.x) > v.w + 0.05 || Math.abs(l.z) > v.l + 0.05) continue;
     if (vehicleZoneAt(v, x, z)) continue;
@@ -189,7 +190,7 @@ function updatePlayer(dt) {
     mx += force.x * 0.6; mz += force.z * 0.45;
   }
   if (P.launched) { mx += P.lvx; mz += P.lvz; }   // thrown by another player
-  moveBody(P, mx * dt, mz * dt);
+  S.ignoreVeh = heldVehicle(); moveBody(P, mx * dt, mz * dt); S.ignoreVeh = null;
   // hanging on to something: you can't get further away than your arms reach
   const wall = GRAB.hands.find(h => h && h.k === 'wall');
   if (wall) { const dx = P.x - wall.at[0], dz = P.z - wall.at[2], dd = Math.hypot(dx, dz), reach = 0.95; if (dd > reach) { P.x = wall.at[0] + dx / dd * reach; P.z = wall.at[2] + dz / dd * reach; } }

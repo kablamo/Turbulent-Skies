@@ -16,6 +16,7 @@ addEventListener('blur', () => { rightMouse = false; });
 const grabbing = () => S.running && !S.paused && (rightMouse || keys.grab) && GRAB.mode === 'grab' && !S.held && !carryingName() && !S.driving && !S.flying && !P.sitV
   && ME && ME.rag && !ME.rag.limp;
 const holdingWall = () => GRAB.hands.some(h => h && h.k === 'wall');
+const heldVehicle = () => { const h = GRAB.hands.find(h => h && h.k === 'veh'); return h ? vehicles[h.i] : null; };
 const _gr = new THREE.Vector3(), _gl = new THREE.Vector3();
 
 // arms: reach out where you're looking (or stay on whatever wall they're holding)
@@ -35,8 +36,7 @@ function reachHands(goal) {
   }
   for (let i = 0; i < 2; i++) {
     const h = GRAB.hands[i], s = i ? 1 : -1;
-    if (h && h.k === 'wall') _gr.fromArray(h.at);
-    else if (h && h.k === 'veh') { const v = vehicles[h.i], q = vehPoint(v, h.lx, h.lz); _gr.set(q.x, h.y, q.z); }   // hands stay on the trolley
+    if (h && h.k === 'wall') _gr.fromArray(h.at);   // (holding a trolley, your hands stay out in front and the trolley goes with them)
     else _gr.copy(goal[1 + i]).addScaledVector(d, 0.62).add(_gl.set(rx * s * 0.08, -0.05, rz * s * 0.08));
     goal[5 + i].copy(_gr);
     GRAB.reach[i] = (GRAB.reach[i] || new THREE.Vector3()).copy(_gr);
@@ -55,7 +55,7 @@ function updateGrab() {
     // a bag?
     for (let j = 0; j < items.length && !got; j++) {
       const it = items[j];
-      if (!['free', 'ride', 'belt'].includes(it.state) || !it.g.visible) continue;
+      if (!['free', 'ride', 'belt', 'pile'].includes(it.state) || !it.g.visible) continue;
       _gr.copy(it.g.position); _gr.y += (it.h || 0.4) * 0.5;
       if (_gr.distanceTo(hp) < (it.r || 0.3) + 0.2) got = { k: 'item', i: j };
     }
@@ -86,6 +86,7 @@ function updateGrab() {
     if (got) { GRAB.hands[i] = got; beep(got.k === 'wall' ? 260 : 420, .06, 'triangle', .04); }
   }
   // hands on a wall stay put there
+  Rg.ignoreVeh = heldVehicle();
   Rg.pins = GRAB.hands.map((h, i) => h && h.k === 'wall' ? { i: 5 + i, pos: new THREE.Vector3().fromArray(h.at) } : null).filter(Boolean);
 }
 
@@ -94,7 +95,7 @@ function hostGrabs(dt) {
   for (const who of [LOCAL, ...NET.remotes]) {
     const grabs = who.isLocal ? GRAB.hands : (who.grab || [null, null]);
     const flat = who.isLocal ? null : who.rg;
-    const hand = h => who.isLocal ? (ME && ME.rag ? ME.rag.pos[5 + h] : null) : flat ? new THREE.Vector3(flat[(5 + h) * 3], flat[(5 + h) * 3 + 1], flat[(5 + h) * 3 + 2]) : null;
+    const hand = h => who.isLocal ? (ME && ME.rag ? ME.rag.pos[5 + h].clone() : null) : flat ? new THREE.Vector3(flat[(5 + h) * 3], flat[(5 + h) * 3 + 1], flat[(5 + h) * 3 + 2]) : null;
     who.gPrev = who.gPrev || [null, null];
     for (let h = 0; h < 2; h++) {
       const cur = grabs[h], was = who.gPrev[h], hp = hand(h);
@@ -102,7 +103,11 @@ function hostGrabs(dt) {
       if (was && !same) letGo(was);
       who.gPrev[h] = cur && cur.k !== 'wall' ? cur : null;
       if (!cur || cur.k === 'wall' || !hp) continue;
-      if (cur.k === 'item') holdItem(items[cur.i], hp, dt);
+      if (cur.k === 'item') {
+        const o = grabs[1 - h], hp2 = o && o.k === 'item' && o.i === cur.i ? hand(1 - h) : null;
+        if (hp2) { if (h === 1) continue; hp.add(hp2).multiplyScalar(0.5); }   // both hands on it: it sits between them
+        holdItem(items[cur.i], hp, dt);
+      }
       else if (cur.k === 'veh') dragVehicle(vehicles[cur.i], cur.lx, cur.lz, hp, dt);
       else holdPassenger(passengers[cur.i], cur.pt, hp, `${idOf(who)}${h}`);
     }
@@ -135,9 +140,9 @@ function dragVehicle(v, lx, lz, hp, dt) {
   if (!v || S.driving === v || NET.remotes.some(r => r.driving === v)) return;
   const q = vehPoint(v, lx, lz), dx = hp.x - q.x, dz = hp.z - q.z;
   if (Math.hypot(dx, dz) < 0.02) return;
-  const k = Math.min(1, dt * 9), rx = q.x - v.x, rz = q.z - v.z;
-  const turn = -(rx * dz - rz * dx) / (rx * rx + rz * rz + 0.4) * k;   // pulled off to the side: it swings round
-  const nh = v.h + turn, nx = v.x + dx * k * 0.85, nz = v.z + dz * k * 0.85;
+  const k = Math.min(1, dt * 20), rx = q.x - v.x, rz = q.z - v.z;
+  const turn = -(rx * dz - rz * dx) / (rx * rx + rz * rz + 0.25) * k;  // pushed or pulled off-centre: it swings round
+  const nh = v.h + turn, nx = v.x + dx * k, nz = v.z + dz * k;
   if (vehicleFits(v, nx, nz, nh)) { v.x = nx; v.z = nz; v.h = nh; }
   else if (vehicleFits(v, nx, nz, v.h)) { v.x = nx; v.z = nz; }
   else return;
