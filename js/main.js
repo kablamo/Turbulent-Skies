@@ -491,8 +491,8 @@ function boardAll() {
 }
 window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolley, bus };
 
-let last = performance.now();
-function frame(now) {
+let last = performance.now(), lastDrawn = last;
+function step(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   // in multiplayer the world keeps going while your menu is open
@@ -503,7 +503,21 @@ function frame(now) {
     camera.rotation.set(0.02, Math.sin(now / 3000) * 0.4, 0);
     for (const s of ['L', 'R']) engines[s].prop.rotation.z += 0.15;
   } else { fireFx.update(dt); smokeFx.update(dt); }
+}
+function frame(now) {
+  lastDrawn = performance.now();
+  step(now);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+// A backup clock for multiplayer. Browsers stop drawing a page that's minimised, in another tab or hidden behind
+// another window, and if that's the host's page the whole world would freeze for everyone (the host runs it).
+// A worker's timer keeps going in the background, so the game keeps running (just without drawing) until it's back.
+(function () {
+  const tick = () => { const now = performance.now(); if (NET.mode !== 'solo' && S.running && now - lastDrawn > 150) step(now); };
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' })));
+    w.onmessage = tick;
+  } catch (e) { setInterval(tick, 33); }
+})();
