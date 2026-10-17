@@ -287,9 +287,11 @@ function update(dt) {
     camera.position.set(rand(-shake, shake), 9, 42);
     camera.lookAt(plane.localToWorld(tmpV.set(0, 1, -25)));
   } else if (S.driving) {
-    // sitting in the driver's seat
+    // sitting in the driver's seat (or walking behind the trolley)
     const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z);
-    camera.position.set(e.x, v.eye.y + rand(-shake, shake), e.z);
+    if (v.push) P.walkT += Math.abs(v.v) * dt;                         // walking along behind the trolley
+    const bob = v.push ? Math.sin(P.walkT * 2.6) * 0.035 : 0;
+    camera.position.set(e.x, v.eye.y + bob + rand(-shake, shake), e.z);
     camera.rotation.set(P.pitch, P.yaw, 0);
   } else {
     const bob = S.flying ? 0 : Math.sin(P.walkT * 2.6) * 0.035;
@@ -303,6 +305,7 @@ function update(dt) {
   interact(dt);
   updateMarkers();
   const tools = heldTools();
+  updateFPArms(dt);
   handItems['🧯'].visible = !S.held && !S.driving && tools.some(i => i.startsWith('🧯'));
   handItems['🔫'].visible = !S.held && !S.driving && tools.some(i => i.startsWith('🔫'));
   updateEffects(dt, flight);

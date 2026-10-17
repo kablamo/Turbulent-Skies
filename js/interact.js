@@ -253,6 +253,57 @@ const handItems = {};
   }
 })();
 
+// ---------------------------------------------------------------- your own arms (first person)
+// They show up when you carry something (reaching down as you pick it up) and when you push the trolley
+// (hands on the handle). Each arm is a sleeve from your shoulder to wherever the hand needs to be.
+const fpArms = new THREE.Group(); fpArms.visible = false; camera.add(fpArms);
+const FP = { arms: [], wasHolding: false, pickT: 9, throwT: 9 };
+(function () {
+  const sleeve = mat(0xf2f4f8), skin = mat(0xf1c27d), gold = mat(0xffd34a, { metalness: .8, roughness: .3 });
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Group(), hand = new THREE.Group(); fpArms.add(arm, hand);
+    const sl = cyl(0.075, 0.085, 1, sleeve, 0, 0, 0.5, arm); sl.rotation.x = Math.PI / 2;   // 1 long along +z; stretched to fit
+    const cuff = cyl(0.08, 0.08, 0.05, gold, 0, 0, -0.07, hand); cuff.rotation.x = Math.PI / 2;
+    sph(0.075, skin, 0, 0, 0, hand, [1.1, 0.8, 1.3]);
+    sph(0.03, skin, s * -0.06, 0.03, 0.02, hand, [1, 1, 1.6]);                               // thumb
+    FP.arms.push({ s, arm, hand, shoulder: new THREE.Vector3(s * 0.3, -0.45, 0.1) });
+  }
+})();
+const _hand = new THREE.Vector3(), _dir = new THREE.Vector3(), _Zf = new THREE.Vector3(0, 0, 1), _hw = new THREE.Vector3();
+const smooth01 = k => k * k * (3 - 2 * k);
+function updateFPArms(dt) {
+  const holding = !!(S.held || carryingName()), v = S.driving, pushing = !!(v && v.push);
+  if (holding !== FP.wasHolding) { if (holding) FP.pickT = 0; else FP.throwT = 0; }
+  FP.wasHolding = holding; FP.pickT += dt; FP.throwT += dt;
+  const throwing = FP.throwT < 0.4;
+  fpArms.visible = (holding || pushing || throwing) && !S.chase && !S.flying;
+  if (!fpArms.visible) return;
+  // picking something up: you crouch (the camera dips) as your hands reach down for it
+  const pk = clamp(FP.pickT / PICK_T, 0, 1), dip = holding ? Math.sin(Math.PI * pk) : 0;
+  camera.position.y -= dip * 0.35;
+  camera.updateMatrixWorld();
+  const bag = S.held && S.held.kind !== 'pax' ? S.held : null, bagAt = new THREE.Vector3();
+  if (bag) camera.worldToLocal(bag.g.getWorldPosition(bagAt));
+  for (const a of FP.arms) {
+    if (pushing) {
+      // hands on the trolley's handle bar, wherever you look
+      const w = vehPoint(v, a.s * 0.33, 0.85);
+      camera.worldToLocal(_hand.set(w.x, GROUND + 1.27, w.z));
+    } else {
+      // hands on either side of the bag (or under the person lying across your arms)
+      if (bag) _hand.set(bagAt.x + a.s * (clamp(bag.hw, 0.15, 0.8) + 0.04), bagAt.y + bag.h * 0.35, bagAt.z);
+      else _hand.set(a.s * 0.3, -0.62, -0.85);
+      if (holding && pk < 1) _hand.lerpVectors(_hw.set(a.s * 0.22, -1.05, -0.55), _hand, smooth01(pk));
+      if (!holding) { const k = Math.sin(Math.PI * FP.throwT / 0.4); _hand.set(a.s * 0.28, -0.35 + k * 0.3, -0.85 - k * 0.25); }   // the fling
+      _hand.y += Math.sin(P.walkT * 2.6) * 0.02;
+    }
+    _dir.subVectors(_hand, a.shoulder);
+    const len = _dir.length(); _dir.normalize();
+    a.arm.position.copy(a.shoulder); a.arm.quaternion.setFromUnitVectors(_Zf, _dir); a.arm.scale.set(1, 1, Math.max(0.05, len - 0.05));
+    a.hand.position.copy(_hand); a.hand.quaternion.copy(a.arm.quaternion);
+  }
+}
+
 // ---------------------------------------------------------------- input
 // keyDown/keyUp are shared by the keyboard and the touch buttons
 function keyDown(k, repeat) {

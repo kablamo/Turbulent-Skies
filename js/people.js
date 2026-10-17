@@ -93,7 +93,7 @@ const BAGS = {
   } },
   egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
 };
-const bagHeight = g => { g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(g); return b.isEmpty() ? 0.4 : b.max.y; };
+const bagBox = g => { g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(g); return b.isEmpty() ? new THREE.Box3(new THREE.Vector3(-0.2, 0, -0.2), new THREE.Vector3(0.2, 0.4, 0.2)) : b; };
 // the luggage for this flight
 const MANIFEST = ['suitcase', 'croc', 'backpack', 'duck', 'chicken', 'gnome', 'briefcase', 'tuba', 'cactus', 'toilet', 'moose', 'fishtank'];
 // bag states: queue (waiting inside the terminal) → belt → ride (on the trolley) → free (physics) / held / gone
@@ -102,7 +102,7 @@ function spawnBag(type) {
   const g = new THREE.Group();
   type.build(g); plane.add(g); g.visible = false;
   const it = { kind: 'bag', type, name: type.name, alive: type.alive, extra: type.extra, g, x: BELT_X, y: BELT_Y, z: BELT_START, vx: 0, vy: 0, vz: 0, r: type.r,
-    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), h: bagHeight(g) };
+    state: 'queue', spinY: rand(0, 6), heading: rand(0, 6), wanderT: 0, eggT: rand(15, 30), slot: null, phase: rand(0, 10), h: bagBox(g).max.y, hw: (bagBox(g).max.x - bagBox(g).min.x) / 2 };
   g.traverse(o => { if (o.isMesh) { o.userData.item = it; targets.push(o); } });
   items.push(it);
   return it;
@@ -266,10 +266,24 @@ function animatePax(p) {
       hy += Math.abs(s) * 0.04;                                           // a bouncy waddle
       break;
     }
-    case 'push': {
-      // both hands forward on the trolley handle, legs walking
-      const s = Math.sin(p.walkT * 8);
-      th = [s * 0.45, -s * 0.45]; sh = [-Math.max(0, s) * 0.6, -Math.max(0, -s) * 0.6]; ar = [1.25, 1.25]; fo = [0.35, 0.35]; az = [0.05, 0.05];
+    case 'push': case 'carry': {
+      // arms out in front (both hands on the trolley handle, or holding something), legs walking when moving
+      const s = p.moving ? Math.sin(p.walkT * 8) : 0;
+      th = [s * 0.45, -s * 0.45]; sh = [-Math.max(0, s) * 0.6, -Math.max(0, -s) * 0.6];
+      if (p.pose === 'push') { ar = [1.25, 1.25]; fo = [0.35, 0.35]; az = [0.05, 0.05]; }
+      else { ar = [1.05, 1.05]; fo = [0.5, 0.5]; az = [0.3, 0.3]; hy += Math.abs(s) * 0.03; }
+      break;
+    }
+    case 'pickup': {
+      // squat, reach down to the floor and stand back up (pickK goes 0 → 1 → 0)
+      const k = p.pickK || 0;
+      hy = -0.12 - 0.28 * k; th = [1.3 * k, 1.3 * k]; sh = [-1.7 * k, -1.7 * k]; ar = [0.4 + 0.8 * k, 0.4 + 0.8 * k]; fo = [0.2, 0.2]; az = [0.25, 0.25];
+      break;
+    }
+    case 'throw': {
+      // a big two-handed fling up and forward
+      const k = p.pickK || 0;
+      ar = [1.0 + 1.6 * k, 1.0 + 1.6 * k]; fo = [0.3 - 0.2 * k, 0.3 - 0.2 * k]; az = [0.25, 0.25]; th = [-0.3 * k, 0.4 * k]; sh = [0, -0.5 * k];
       break;
     }
     case 'flail':
@@ -361,6 +375,7 @@ function pickUp(obj, who = LOCAL) {
     shout(obj, pick(YELLS.picked));
   } else { freeSlot(obj); if (obj.alive && obj.alive.kind === 'chicken') quack(); }
   obj.state = 'held'; who.held = obj; obj.holder = who;
+  obj.pickFrom = obj.g.position.clone(); obj.pickAt = S.t;   // it swoops up from where it was into your arms
   beep(500, .08, 'sine', .05);
 }
 function throwHeld(strength, who = LOCAL) {
@@ -380,7 +395,9 @@ function updateHeld() { for (const who of [LOCAL, ...NET.remotes]) holdInFront(w
 function holdInFront(who) {
   const o = who.held; if (!o) return;
   const pp = who.pose, d = lookDir(pp);
-  o.g.position.set(pp.x + d.x * 1.0, pp.y + EYE - 0.55 + d.y * 0.8, pp.z + d.z * 1.0);
+  // bags are held low in front (bigger ones further out, so you can still see); people lie across your arms
+  const far = o.kind === 'pax' ? 1.0 : 0.55 + o.r * 0.9, low = o.kind === 'pax' ? 0.55 : 0.85;
+  o.g.position.set(pp.x + d.x * far, pp.y + EYE - low + d.y * 0.8, pp.z + d.z * far);
   if (o.kind === 'pax') {
     // carried sideways across your arms, legs dangling
     o.g.rotation.set(0, pp.yaw, 0);
@@ -388,7 +405,11 @@ function holdInFront(who) {
     o.g.position.y -= 1.0;
     o.pose = 'held'; animatePax(o);
   } else { o.g.rotation.set(0, pp.yaw, 0); if (o.alive) { const ud = o.g.userData; if (ud.jaw) ud.jaw.rotation.x = Math.abs(Math.sin(S.t * 9)) * 0.6; if (ud.wings) ud.wings.forEach((w, i) => w.rotation.z = (i ? -1 : 1) * Math.abs(Math.sin(S.t * 25)) * 1.2); } }
+  const k = o.pickFrom ? clamp((S.t - o.pickAt) / PICK_T, 0, 1) : 1;
+  if (k < 1) o.g.position.lerpVectors(o.pickFrom, o.g.position, k * k * (3 - 2 * k));
+  else o.pickFrom = null;
 }
+const PICK_T = 0.4;   // how long picking something up takes (the swoop, the squat, your arms reaching down)
 
 // ---------------------------------------------------------------- luggage
 function overboard(o) {

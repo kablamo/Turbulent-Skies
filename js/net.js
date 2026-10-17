@@ -98,13 +98,21 @@ function poseAvatar(a, d, dt) {
     return;
   }
   const moved = Math.hypot(d.x - a.g.position.x, d.z - a.g.position.z);
-  a.walkT += moved > 0.01 ? dt * 1.2 : 0;
-  a.pose = d.seat ? 'sit' : d.push ? 'push' : moved > 0.01 ? 'walk' : 'stand';
+  a.moving = moved > 0.01;
+  a.walkT += a.moving ? dt * 1.2 : 0;
+  // picking things up and throwing them: a quick squat when something lands in your arms, a fling when it leaves
+  const holding = !!(d.held || d.cy);
+  if (holding !== !!a.wasHolding) { a.actT = 0; a.act = holding ? 'pickup' : 'throw'; }
+  a.wasHolding = holding;
+  a.actT = (a.actT ?? 9) + dt;
+  const actLen = a.act === 'pickup' ? PICK_T + 0.1 : 0.45;
+  a.pickK = Math.sin(Math.PI * clamp(a.actT / actLen, 0, 1));
+  a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.moving ? 'walk' : 'stand';
   lerpTo(a.g.position, d.x, d.y, d.z, dt);
   a.g.rotation.set(0, d.yaw, 0);
   // thrown: tumbling through the air
   if (d.air) { a.spinT = (a.spinT || 0) + dt; a.pose = 'flail'; a.rig.core.rotation.set(a.spinT * 7, 0, a.spinT * 4); }
-  else { a.spinT = 0; a.rig.core.rotation.set(0, 0, 0); }
+  else { a.spinT = 0; a.rig.core.rotation.set(a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0, 0, 0); }   // lean in
   animatePax(a);
 }
 // the host shows remote players; everyone else shows whoever's in the snapshot except themselves
@@ -197,7 +205,7 @@ function heldRef(o) { return !o ? null : o.kind === 'pax' ? ['pax', passengers.i
 function playerPose(who) {
   const v = who.isLocal ? S.driving : who.driving, flying = who.isLocal ? S.flying : S.pilotRP === who;
   const extra = { pitch: who.pose.pitch || 0, cb: who.carriedBy ? idOf(who.carriedBy) : null, cy: who.carryP ? idOf(who.carryP) : null,
-    air: who.isLocal ? !!P.launched : !!who.air };
+    air: who.isLocal ? !!P.launched : !!who.air, held: !!who.held };
   if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z, yaw: v.h, seat: !v.push, push: !!v.push, ...extra }; }
   if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
   const yaw = who.carriedBy ? who.carriedBy.pose.yaw : who.pose.yaw;
