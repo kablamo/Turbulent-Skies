@@ -376,10 +376,12 @@ const YELLS = {
   croc: ['CROCODILE!!', 'IT\'S EATING MY SHOE!', 'Nice crocodile… nice…', 'Is the crocodile in first class?'],
 };
 // limp: the body goes flying, tumbling end over end with its arms and legs flailing
+// go flying as a real, physics-driven ragdoll (ragdoll.js)
 function ragdoll(p, vx, vy, vz) {
-  p.state = 'air'; p.pose = 'flail';
+  p.state = 'air'; p.pose = 'frozen';                       // the physics moves the limbs now, not an animation
   p.vx = vx; p.vy = vy; p.vz = vz;
   p.spin = { x: rand(-7, 7), z: rand(-7, 7) };
+  startRag(p, vx, vy, vz);
   shout(p, pick(YELLS.thrown));
   slideWhistle(true);
 }
@@ -402,6 +404,7 @@ function freeSlot(it) { if (it.slot) { it.slot.item = null; it.slot = null; } }
 // `who` is whoever grabbed it: LOCAL (you) or a remote player
 function pickUp(obj, who = LOCAL) {
   if (obj.kind === 'pax') {
+    obj.rag = null;   // grabbed out of a ragdoll heap
     if (obj.seat) { obj.seat.occupant = null; obj.seat = null; }
     if (obj.busSeat) { obj.busSeat.p = null; obj.busSeat = null; }
     if (obj.state === 'seated' && inAir()) { S.needs.calm -= 4; say(`${obj.name}: "Put me DOWN!"`); }
@@ -603,6 +606,7 @@ function sendToSeat(p) {
 }
 function ejectPassenger(p, msg) {
   netEvent('eject', passengers.indexOf(p));
+  p.rag = null; p.netRag = null; p.rig.core.quaternion.identity();
   if (p.seat) { p.seat.occupant = null; p.seat = null; }
   overboard(p);
   // first they plummet, tumbling and flailing; the parachute (hidden for now) pops open a moment later
@@ -691,6 +695,16 @@ function walkToward(p, tx, tz, speed, dt) {
   return d - st < 0.06;
 }
 function stepPassenger(p, dt) {
+  if (p.state === 'air' && p.rag) {
+    const done = updateRagdoll(p, dt);
+    if (groundAt(p.x, p.z) === null && p.y < -3) return ejectPassenger(p);
+    if (done) {
+      if (inAir() && !insideHull(p.x, p.z) && !onRamp(p.x, p.z)) { p.rag = null; p.rig.core.quaternion.identity(); return landed(p); }
+      p.state = 'down'; p.downT = rand(2, 3);
+      boing(); shout(p, pick(YELLS.landed));
+    }
+    return;
+  }
   if (p.state === 'air') {
     cabinForces(p, force);
     p.vx += force.x * dt; p.vz += force.z * dt;
@@ -716,6 +730,21 @@ function stepPassenger(p, dt) {
     }
     if (groundAt(p.x, p.z) === null && p.y < -3) return ejectPassenger(p);
     p.g.position.set(p.x, p.y, p.z);
+    return;
+  }
+  if (p.state === 'down' && p.rag) {
+    // lying in a heap exactly as they landed, then getting up
+    if ((p.downT -= dt) <= 0) {
+      p.state = 'getup'; p.getT = 0;
+      p.ragUp = { q: p.rig.core.quaternion.clone(), from: p.g.position.clone(), to: new THREE.Vector3(p.x, p.y, p.z) };
+    }
+    return;
+  }
+  if (p.state === 'getup' && p.rag) {
+    p.getT += dt;
+    const k = smooth01(clamp(p.getT / 0.7, 0, 1));
+    ragGetUp(p, k);
+    if (k >= 1) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.pose = 'stand'; landed(p); }
     return;
   }
   if (p.state === 'down') {
