@@ -283,7 +283,8 @@ function activeRag(a, dt, yaw, adjust) {
   dt = Math.max(dt, 1e-3);
   const goal = ragPoints(a);                                 // where the animation has put each point this frame
   let Rg = a.rag;
-  const far = Rg && goal.some((t, i) => t.distanceTo(Rg.pos[i]) > 1.6);
+  // (a real teleport moves the whole body: judge it by the hips, not a stretched-out arm)
+  const far = Rg && ragMid(goal, 7, 8).distanceTo(ragMid(Rg.pos, 7, 8)) > 2.5;
   if (!Rg || (far && !Rg.limp)) {
     // first time, or we've been teleported: start (again) exactly in the animated pose, standing still
     startRag(a, 0, 0, 0); Rg = a.rag;

@@ -179,9 +179,12 @@ function updatePlayer(dt) {
   const spd = Math.hypot(mx, mz);
   P.walkT += dt * spd;
   // your body turns to face where you're going (in first person it simply faces where you look)
-  if (S.view !== 'third') P.face = P.yaw;
+  // (holding on to something, you keep facing it: you back away from a wall, you don't turn your back on it)
+  const grip = GRAB.hands.find(h => h && h.k === 'wall');
+  if (grip) P.face = turnToward(P.face, Math.atan2(-(grip.at[0] - P.x), -(grip.at[2] - P.z)), 6 * dt);
+  else if (S.view !== 'third') P.face = P.yaw;
+  else if (GRAB.hands.some(h => h) || S.held || carryingName()) P.face = turnToward(P.face, P.yaw, 5 * dt);
   else if (spd > 0.4) P.face = turnToward(P.face, Math.atan2(-mx, -mz), 9 * dt);
-  else if (S.held || carryingName()) P.face = turnToward(P.face, P.yaw, 5 * dt);
   if (S.phase !== 'airport' && !holdingWall()) {
     // the wind wants you off the plane; standing still lets you brace against it (or hang on to something: G)
     if (!insideHull(P.x, P.z)) { mz += (len > 0 ? 1.3 : 0.2) + S.turb * 2.5; mx += S.gust * (len > 0 ? 1 : 0.4); }
