@@ -333,9 +333,9 @@ function animatePax(p) {
   for (let i = 0; i < 2; i++) {
     const s = i ? 1 : -1;
     r.thigh[i].rotation.set(th[i], 0, s * tz[i]);
-    r.shin[i].rotation.x = sh[i];
+    r.shin[i].rotation.set(sh[i], 0, 0);           // (set every axis, so nothing's left twisted from a ragdoll)
     r.arm[i].rotation.set(ar[i] + fl, 0, s * az[i] + flS);
-    r.fore[i].rotation.x = fo[i];
+    r.fore[i].rotation.set(fo[i], 0, 0);
   }
   const wild = p.pose === 'flail' || p.pose === 'held' ? 0.026 : 0.01;
   r.pupils.forEach((e, i) => e.position.set(Math.sin(t * 7 + i * 2) * wild, Math.cos(t * 5.3 + i) * wild, -0.045));
@@ -744,7 +744,7 @@ function stepPassenger(p, dt) {
     p.getT += dt;
     const k = smooth01(clamp(p.getT / 0.7, 0, 1));
     ragGetUp(p, k);
-    if (k >= 1) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.pose = 'stand'; landed(p); }
+    if (k >= 1) { p.rag = null; p.ragUp = null; p.rig.core.quaternion.identity(); p.rig.core.position.y = 0.85; p.pose = 'stand'; landed(p); animatePax(p); }
     return;
   }
   if (p.state === 'down') {
