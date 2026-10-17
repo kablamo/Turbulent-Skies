@@ -72,7 +72,8 @@ function ragSubstep(Rg, fx, fz) {
     if (g !== null && p.y < g + r && p.y > g - 0.6) {
       const vyIn = p.y - q.y;
       p.y = g + r; q.y = p.y + vyIn * 0.3;                              // a small bounce
-      q.x = p.x - (p.x - q.x) * 0.75; q.z = p.z - (p.z - q.z) * 0.75;   // and friction
+      const fr = T ? 0.97 : 0.75;                                        // friction (slippier while getting up)
+      q.x = p.x - (p.x - q.x) * fr; q.z = p.z - (p.z - q.z) * fr;
     }
     if (insideHull(p.x, p.z)) {
       const top = CY + Math.sqrt(Math.max(0, R * R - p.x * p.x)) - r - 0.1;
@@ -91,6 +92,7 @@ const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x
 // the back or cross through each other, and arms can't go through the body.
 const _ja = new THREE.Vector3(), _jf = new THREE.Vector3(), _jx = new THREE.Vector3(), _jr = new THREE.Vector3(), _ju = new THREE.Vector3(), _jb = new THREE.Vector3(), _jd = new THREE.Vector3(), _je = new THREE.Vector3(), _jc = new THREE.Vector3();
 function ragLimits(pos, Rg) {
+  if (Rg.targets) return;   // (while getting up, the springs already pull toward a natural pose)
   // the torso's own directions: right, up and back
   _ju.addVectors(pos[1], pos[2]).sub(pos[7]).sub(pos[8]).normalize();
   _jr.subVectors(pos[2], pos[1]).add(_jd.subVectors(pos[8], pos[7]));
@@ -211,7 +213,14 @@ function standPoints(p, x, y, z, yaw) {
 }
 function startGetUp(p) {
   const Rg = p.rag, pel = ragMid(Rg.pos, 7, 8), g = groundAt(pel.x, pel.z);
-  Rg.targets = standPoints(p, pel.x, g === null ? p.y : g, pel.z, Rg.yaw);
+  // stand up facing whichever way is least twisting for the body as it's lying (try 12 directions)
+  let best = null, bestErr = 1e9, bestYaw = Rg.yaw;
+  for (let k = 0; k < 12; k++) {
+    const yaw = Rg.yaw + k * Math.PI / 6, t = standPoints(p, pel.x, g === null ? p.y : g, pel.z, yaw);
+    let e = 0; for (let i = 0; i < t.length; i++) { const dx = t[i].x - Rg.pos[i].x, dz = t[i].z - Rg.pos[i].z; e += dx * dx + dz * dz; }
+    if (e < bestErr) { bestErr = e; best = t; bestYaw = yaw; }
+  }
+  Rg.targets = best; Rg.yaw = bestYaw;
   Rg.upT = 0; Rg.done = 0;
 }
 // one frame of springing up; returns true once they're standing steady
@@ -222,8 +231,9 @@ function stepGetUp(p, dt) {
   Rg.k = 45 * ramp * ramp; Rg.damp = 2.2 * ramp; Rg.lift = ramp;   // springy, so it bounces
   stepRag(p, dt, 0, 0);
   mapRag(p, Rg.pos, Rg.yaw);
-  let err = 0, fast = 0;
-  for (let i = 0; i < Rg.pos.length; i++) { err = Math.max(err, Rg.pos[i].distanceTo(Rg.targets[i])); fast = Math.max(fast, Rg.pos[i].distanceTo(Rg.prev[i]) / RAG_H); }
-  Rg.done = err < 0.25 && fast < 0.45 ? Rg.done + dt : 0;
+  // standing steady? (on average close to the standing shape, nothing wildly off, and not still bouncing)
+  let err = 0, worst = 0, fast = 0;
+  for (let i = 0; i < Rg.pos.length; i++) { const e = Rg.pos[i].distanceTo(Rg.targets[i]); err += e / Rg.pos.length; worst = Math.max(worst, e); fast = Math.max(fast, Rg.pos[i].distanceTo(Rg.prev[i]) / RAG_H); }
+  Rg.done = err < 0.1 && worst < 0.5 && fast < 0.5 ? Rg.done + dt : 0;
   return Rg.done > 0.12 || Rg.upT > 4;
 }
