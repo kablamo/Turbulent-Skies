@@ -44,8 +44,8 @@ function makeVehicle(kind, x, z) {
     // grab the handle (E) to push it
     const hit = box(1.2, 0.5, 0.5, M.hit, 0, GROUND + 1.05, 0.95, g);
     hit.userData.drive = v; targets.push(hit);
-    // bags pile up in four stacks on the bed, three high
-    for (const lz of [-0.55, 0.25]) for (const lx of [-0.27, 0.27]) for (let k = 0; k < 3; k++) v.slots.push({ x: lx, z: lz, k, item: null });
+    // room for just three bags, loaded and unloaded by hand
+    for (const [lx, lz] of [[-0.27, -0.55], [0.27, -0.55], [0, 0.2]]) v.slots.push({ x: lx, z: lz, k: 0, item: null });
   } else {
     // the shuttle bus: door at the front right, driver front left, a row of seats either side of the aisle
     const white = std(0xf4f4f0, { roughness: .4 }), glass = std(0x223344, { transparent: true, opacity: .4, roughness: .1 });
@@ -209,7 +209,7 @@ function vehicleAction(v) {
   if (v.push) {
     // no automatic unloading: push it to the cargo ramp, let go, and carry the bags in yourself
     const bags = v.slots.filter(s => s.item).length;
-    if (!bags) return say('The trolley is empty. Push it to the end of the terminal conveyor to pick up bags.');
+    if (!bags) return say(`The trolley is empty. Push it to the conveyor, pick bags off the belt (E) and put them on it (Q). It holds ${v.slots.length}.`);
     return say(`${bags} bag${bags > 1 ? 's' : ''} on the trolley. Push it to the cargo ramp, let go (E), and carry them up the ramp into the cargo bay.`);
   }
   const door = busDoor(v);

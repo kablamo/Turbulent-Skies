@@ -363,7 +363,7 @@ function boardingCard() {
   const row = (ok, text, loc) => `<div class="st ${ok ? 'done' : 'cur'}">${ok ? '✓' : '▶'} ${text}${!ok && loc ? `<span class="loc">📍 ${loc}</span>` : ''}</div>`;
   return `<div class="card board"><div class="ct">🛫 BOARDING · FLIGHT 404</div>
     ${row(b.seated === b.pax, `Passengers seated: ${b.seated}/${b.pax}`, `${inTerm} in the terminal · ${onBus} on the bus. Park the bus at the terminal doors and press F, then press F again at the cargo ramp.`)}
-    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTrolley} on the trolley. Push the luggage trolley to the end of the belt, then to the cargo ramp, and carry each bag in by hand (E).`)}
+    ${row(b.loaded === b.bags, `Bags in the cargo bay: ${b.loaded}/${b.bags}`, `${onBelt} on the conveyor · ${onTrolley} on the trolley. Pick bags off the belt (E), put them on the luggage trolley (Q, it holds 3), push it to the cargo ramp and carry each bag in by hand.`)}
     ${row(b.rampUp, 'Raise the cargo ramp', 'Cargo bay · yellow panel')}
     ${row(b.doorsShut, 'Exit doors closed', 'Exit row')}
     ${row(false, 'Take off from the captain\'s seat', 'Cockpit · yoke')}</div>`;

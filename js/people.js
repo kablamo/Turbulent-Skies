@@ -383,6 +383,18 @@ function throwHeld(strength, who = LOCAL) {
   who.held = null; o.holder = null;
   const pp = who.pose, d = lookDir(pp);
   o.x = pp.x; o.z = pp.z; o.y = pp.y + 1.0;
+  // putting something down: it goes down right where you were holding it
+  const hx = o.g.position.x, hz = o.g.position.z, hy = o.g.position.y;
+  if (strength <= 2 && o.kind !== 'pax') {
+    // next to the trolley? it goes on the trolley (if there's room)
+    const b = trolley.bed, l = vehLocal(trolley, hx, hz);
+    if (S.phase === 'airport' && l.x > b.x0 - 0.6 && l.x < b.x1 + 0.6 && l.z > b.z0 - 0.6 && l.z < b.z1 + 0.4) {
+      const slot = freeTrolleySlot(trolley);
+      if (slot) { slot.item = o; o.slot = slot; o.state = 'ride'; o.y = Math.max(hy, slotY(trolley, slot)); beep(380, .08, 'triangle', .05); return; }
+      say(`The trolley is full (${trolley.slots.length} bags)! Take this lot to the plane first.`, 'bad');
+    }
+    if (canGo(pp.x, pp.z, Math.max(hy, pp.y), hx, hz)) { o.x = hx; o.z = hz; o.y = Math.max(hy, pp.y + 0.3); }
+  }
   const vx = d.x * strength, vz = d.z * strength, vy = d.y * strength + (strength > 2 ? 2.5 : 0);
   o.g.rotation.set(0, pp.yaw, 0);
   if (o.kind === 'pax') {
@@ -431,13 +443,7 @@ function updateConveyor(dt) {
     it.x = BELT_X; it.y = BELT_Y;
     it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
   }
-  // drop the front bag onto the trolley when it's parked at the end of the belt
-  S.beltLoadT -= dt;
-  const front = onBelt[0], bed = vehPoint(trolley, 0, -0.15);
-  if (front && front.z <= BELT_END + 0.05 && S.beltLoadT <= 0 && Math.abs(trolley.v) < 0.4 && Math.hypot(bed.x - BELT_X, bed.z - (BELT_END - 1.2)) < 2.2) {
-    const slot = freeTrolleySlot(trolley);
-    if (slot) { slot.item = front; front.slot = slot; front.state = 'ride'; S.beltLoadT = 0.5; beep(380, .08, 'triangle', .05); }
-  }
+  // bags wait at the end of the belt until someone picks them up and puts them on the trolley
 }
 function updateItems(dt) {
   if (S.phase === 'airport') updateConveyor(dt);
@@ -454,7 +460,13 @@ function updateItems(dt) {
     if (S.phase === 'airport' && it.vy <= 0 && it.y < trolley.bedTop + 1.4 && it.y > trolley.bedTop - 0.2) {
       const l = vehLocal(trolley, it.x, it.z), b = trolley.bed;
       const slot = l.x > b.x0 - 0.15 && l.x < b.x1 + 0.15 && l.z > b.z0 - 0.15 && l.z < b.z1 + 0.1 && freeTrolleySlot(trolley);
-      if (slot && it.y < slotY(trolley, slot) + 0.3) { slot.item = it; it.slot = slot; it.state = 'ride'; continue; }
+      if (slot && it.y < slotY(trolley, slot) + 0.3) { slot.item = it; it.slot = slot; it.state = 'ride'; beep(380, .08, 'triangle', .05); continue; }
+      // the trolley's full: the bag tumbles off the side
+      if (!slot && it.y < trolley.bedTop + 0.3 && Math.abs(l.x) < trolley.w && Math.abs(l.z) < trolley.l) {
+        const side = l.x < 0 ? -1 : 1, c = Math.cos(trolley.h), s = Math.sin(trolley.h);
+        it.vx = side * c * 3; it.vz = -side * s * 3; it.vy = 1.5;
+        if (S.t - (S.fullMsgT || -9) > 3) { S.fullMsgT = S.t; say(`The trolley is full (${trolley.slots.length} bags)! Take this lot to the plane first.`, 'bad'); }
+      }
     }
     cabinForces(it, force);
     it.vx += force.x * dt; it.vz += force.z * dt;

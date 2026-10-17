@@ -131,7 +131,7 @@ function interact(dt) {
     S.press = S.drop = S.act = false;
     if (!S.driving) return;
     const v = S.driving;
-    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.slots.filter(s => s.item).length} bags on board`, true); return; }
+    if (v.push) { setPrompt(`<kbd>W</kbd><kbd>S</kbd> push <kbd>A</kbd><kbd>D</kbd> turn <kbd>C</kbd>camera <kbd>E</kbd>let go · ${v.slots.filter(s => s.item).length}/${v.slots.length} bags`, true); return; }
     const extra = ` · ${passengers.filter(p => p.state === 'bus').length}/10 aboard`;
     setPrompt(`<kbd>W</kbd><kbd>S</kbd> drive <kbd>A</kbd><kbd>D</kbd> steer ${v.kind === 'bus' ? '<kbd>F</kbd>board / unload <kbd>Q</kbd>door ' : ''}<kbd>C</kbd>camera <kbd>E</kbd>get up${extra}`, true);
     return;
@@ -360,7 +360,7 @@ function helpHTML() {
       <tr><td>${k_('Space')}</td><td>Jump</td></tr>
       <tr><td>${k_('E')} or click</td><td>Use, pick up, throw what you're carrying</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
-      <tr><td>${k_('Q')}</td><td>Put down what you're carrying</td></tr>
+      <tr><td>${k_('Q')}</td><td>Put down what you're carrying (next to the luggage trolley, it goes on the trolley)</td></tr>
       <tr><td>${k_('E')} on a player</td><td>Pick up another player (multiplayer), then ${k_('E')} throws them</td></tr>
       <tr><td>Mash ${k_('Space')}</td><td>Wriggle free when someone's carrying you</td></tr>
       <tr><th colspan="2">Driving the bus · pushing the luggage trolley</th></tr>
