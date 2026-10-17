@@ -343,25 +343,22 @@ function balanceFeet(a, goal, dt, yaw, onGround) {
   const offX = cpx - supX, offZ = cpz - supZ, off = Math.hypot(offX, offZ);
   const swinging = F.some(f => f.swing);
   a.balT = (a.balT || 0) + dt;
-  const dur = clamp(0.26 - speed * 0.035, 0.11, 0.26);   // quicker steps the faster you go
+  // walking: a steady rhythm. Every T seconds the other foot takes its turn, landing a little ahead of its hip
+  // (half a step's worth of travel), so the body rolls over it while it's planted. Faster = quicker, longer steps.
+  const T = clamp(0.3 - speed * 0.038, 0.13, 0.3), dur = T * 0.85;
+  a.gaitT = (a.gaitT || 0) + dt;
   if (!swinging && speed > 0.35) {
-    // on the move: walk in a rhythm. Each foot wants to be a little ahead of its hip (where the body's going);
-    // the one that's fallen furthest behind that spot steps next, landing ahead so it stays useful for a while
-    const want = i => { const h = home(i); h.x += a.comV.x * 0.16; h.z += a.comV.z * 0.16; return h; };
-    const behind = F.map((f, i) => { const w = want(i); return Math.hypot(f.pos.x - w.x, f.pos.z - w.z); });
-    let i = behind[0] >= behind[1] ? 0 : 1;
-    if (a.lastFoot === i && behind[1 - i] > behind[i] * 0.5) i = 1 - i;   // take turns
-    const half = clamp(speed * 0.16, 0.08, 0.45) * sc;
-    if (behind[i] > half || (a.balT > 0.45 && behind[i] > 0.06)) {
-      const w = want(i); let tx = w.x + a.comV.x * dur * 0.6, tz = w.z + a.comV.z * dur * 0.6;
-      const fp = F[i].pos, len = Math.hypot(tx - fp.x, tz - fp.z), max = 1.8 * sc;
+    if (a.gaitT >= T) {
+      const i = a.lastFoot === 0 ? 1 : 0, h = home(i);
+      let tx = h.x + a.comV.x * (T * 0.5 + dur), tz = h.z + a.comV.z * (T * 0.5 + dur);
+      const fp = F[i].pos, len = Math.hypot(tx - fp.x, tz - fp.z), max = 2.2 * sc;
       if (len > max) { tx = fp.x + (tx - fp.x) * max / len; tz = fp.z + (tz - fp.z) * max / len; }
       F[i].swing = { from: fp.clone(), to: spot(i, tx, tz), t: 0, dur };
-      a.lastFoot = i; a.balT = 0;
+      a.lastFoot = i; a.balT = 0; a.gaitT = 0;
     }
   } else if (!swinging) {
     const fromHome = F.map((f, i) => { const h = home(i); return Math.hypot(f.pos.x - h.x, f.pos.z - h.z); });
-    const fall = off > 0.14 * sc, stray = Math.max(...fromHome) > 0.42 * sc, tidy = speed < 0.25 && Math.max(...fromHome) > 0.09 * sc && a.balT > 0.35;
+    const fall = off > 0.2 * sc, stray = Math.max(...fromHome) > 0.42 * sc, tidy = speed < 0.25 && Math.max(...fromHome) > 0.12 * sc && a.balT > 0.5;
     if (fall || stray || tidy) {
       // step with the foot that's furthest behind the way you're falling (or furthest out of place)
       let i;
@@ -381,7 +378,7 @@ function balanceFeet(a, goal, dt, yaw, onGround) {
     if (f.swing) {
       const w = f.swing; w.t += dt;
       const k = Math.min(1, w.t / w.dur);
-      f.pos.lerpVectors(w.from, w.to, k); f.pos.y += Math.sin(Math.PI * k) * 0.13 * sc;   // lift the foot as it swings
+      f.pos.lerpVectors(w.from, w.to, k); f.pos.y += Math.sin(Math.PI * k) * (0.09 + speed * 0.025) * sc;   // lift the foot as it swings
       if (k >= 1) { f.pos.copy(w.to); f.swing = null; }
     }
     goal[11 + i].copy(f.pos);
@@ -389,11 +386,24 @@ function balanceFeet(a, goal, dt, yaw, onGround) {
     // (the model has no ankle: its shoe turns with the lower leg). Only if that can't work, bend it forwards.
     const H = goal[7 + i], L1 = Rg.len[14 + i * 2], L2 = Rg.len[15 + i * 2];
     const kx = f.pos.x, ky = f.pos.y + L2, kz = f.pos.z, toHip = Math.hypot(H.x - kx, H.y - ky, H.z - kz);
-    if (toHip < L1 * 1.15 && ky < H.y) { goal[9 + i].set(kx, ky, kz); continue; }
+    if (!f.swing && toHip < L1 * 1.15 && ky < H.y) { goal[9 + i].set(kx, ky, kz); continue; }   // (a swinging leg bends at the knee instead)
     _bv.subVectors(f.pos, H); let d = _bv.length() || 1e-3; _bv.divideScalar(d); d = Math.min(d, L1 + L2 - 1e-3);
     const along = (L1 * L1 - L2 * L2 + d * d) / (2 * d), up = Math.sqrt(Math.max(0, L1 * L1 - along * along));
     const bx = fx - _bv.x * (fx * _bv.x + fz * _bv.z), by = -_bv.y * (fx * _bv.x + fz * _bv.z), bz = fz - _bv.z * (fx * _bv.x + fz * _bv.z);
     const bl = Math.hypot(bx, by, bz) || 1;
     goal[9 + i].set(H.x + _bv.x * along + bx / bl * up, H.y + _bv.y * along + by / bl * up, H.z + _bv.z * along + bz / bl * up);
+  }
+  // the rest of the body walks in time with the feet: each arm swings opposite its leg, the body rises as a leg
+  // passes underneath and dips as the foot lands, and leans forward a little the faster you go
+  if (speed > 0.35) {
+    const sw = F.find(f => f.swing), k = sw ? Math.min(1, sw.swing.t / sw.swing.dur) : 0;
+    const bob = Math.sin(Math.PI * k) * 0.035 * sc, lean = Math.min(speed, 6) * 0.025 * sc;
+    for (let i = 0; i < 9; i++) goal[i].y += bob;
+    for (const [i, w] of [[0, 1.6], [1, 1], [2, 1]]) { goal[i].x += fx * lean * w; goal[i].z += fz * lean * w; }
+    for (let i = 0; i < 2; i++) {
+      const legFwd = (F[i].pos.x - goal[7 + i].x) * fx + (F[i].pos.z - goal[7 + i].z) * fz, swing = clamp(-legFwd * 0.5, -0.3, 0.3);
+      goal[5 + i].x += fx * swing; goal[5 + i].z += fz * swing; goal[5 + i].y += Math.abs(swing) * 0.25;
+      goal[3 + i].x += fx * swing * 0.5; goal[3 + i].z += fz * swing * 0.5;
+    }
   }
 }

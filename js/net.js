@@ -112,7 +112,7 @@ function poseAvatar(a, d, dt) {
   a.actT = (a.actT ?? 9) + dt;
   const actLen = a.act === 'pickup' ? PICK_T + 0.1 : 0.45;
   a.pickK = Math.sin(Math.PI * clamp(a.actT / actLen, 0, 1));
-  a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.stride > 0.05 ? 'walk' : 'stand';
+  a.pose = d.seat ? 'sit' : d.push ? 'push' : a.actT < actLen ? a.act : holding ? 'carry' : a.stride > 0.05 && !d.noWalk ? 'walk' : 'stand';
   // thrown: tumbling through the air
   if (d.air) { a.spinT = (a.spinT || 0) + dt; a.pose = 'flail'; a.rig.core.rotation.set(a.spinT * 7, 0, a.spinT * 4); }
   else { a.spinT = 0; a.rig.core.rotation.set((a.pose === 'pickup' ? -0.45 * a.pickK : a.pose === 'push' ? -0.15 : 0) - a.lf, 0, -a.ls); }   // lean in (plus the wobble)

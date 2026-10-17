@@ -166,7 +166,8 @@ function updatePlayer(dt) {
   P.pitch = clamp(P.pitch + ((keys.arrowup ? 1 : 0) - (keys.arrowdown ? 1 : 0)) * 1.6 * dt, -1.45, 1.45);
   const f = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
   const r = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  const sp = (keys.shift ? 6.0 : 3.4) * (S.held ? 0.85 : 1);
+  const sp = (keys.shift ? 4.4 : 2.4)   // (a pace short legs can really step at)
+    * (S.held ? 0.85 : 1);
   let mx = -Math.sin(P.yaw) * f + Math.cos(P.yaw) * r;
   let mz = -Math.cos(P.yaw) * f - Math.sin(P.yaw) * r;
   const len = Math.hypot(mx, mz);

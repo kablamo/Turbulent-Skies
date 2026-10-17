@@ -563,7 +563,7 @@ function updateMe(dt) {
       if (S.view !== 'third') P.yaw = P.face;
     }
   }
-  poseAvatar(ME, { ...d, yaw: P.face }, dt);     // the animation: where the body *wants* to be
+  poseAvatar(ME, { ...d, yaw: P.face, noWalk: true }, dt);   // the animation: where the body *wants* to be (the stepping's done by balanceFeet)
   const g = groundAt(P.x, P.z), onGround = g !== null && P.y <= g + 0.06 && !S.driving;
   if (ME.rag) ME.rag.solidBags = true;
   activeRag(ME, dt, P.face, goal => { if (!S.driving) balanceFeet(ME, goal, dt, P.face, onGround); reachHands(goal); });   // the physics: where it actually is
