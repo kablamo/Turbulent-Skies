@@ -208,12 +208,17 @@ function updatePlayer(dt) {
   else if (spd > 0.4) P.face = turnToward(P.face, Math.atan2(-mx, -mz), 9 * dt);
   if (S.phase !== 'airport' && !holdingWall()) {
     // the wind wants you off the plane; standing still lets you brace against it (or hang on to something: G)
-    if (!insideHull(P.x, P.z)) { mz += (len > 0 ? 1.3 : 0.2) + S.turb * 2.5; mx += S.gust * (len > 0 ? 1 : 0.4); }
+    // (arms out, grabbing: you lean into it and it barely moves you; and just after climbing back up, you get a
+    // moment to find your feet)
+    const brace = S.t - (P.mantleT ?? -9) < 1.5 ? 0 : grabbing() ? 0.3 : 1;
+    if (!insideHull(P.x, P.z)) { mz += ((len > 0 ? 1.3 : 0.2) + S.turb * 2.5) * brace; mx += S.gust * (len > 0 ? 1 : 0.4) * brace; }
     else mx += S.gust * 0.3;
     cabinForces(P, force);
     mx += force.x * 0.6; mz += force.z * 0.45;
   }
   if (P.launched) { mx += P.lvx; mz += P.lvz; }   // thrown by another player
+  // hanging from your hands, W is for climbing, not walking; and just after climbing up, a moment to find your feet
+  if (P.hang || S.t - (P.mantleT ?? -9) < 0.4) { mx = mz = 0; P.mvx = P.mvz = 0; }
   const was = { x: P.x, z: P.z };
   S.ignoreVeh = heldVehicle(); moveBody(P, mx * dt, mz * dt); S.ignoreVeh = null;
   // carrying a trolley: it goes where you go, so if it would hit something you can't go there either
@@ -284,7 +289,7 @@ function updatePlayer(dt) {
 
   // propeller wash knocks you right off the wing
   const ax = Math.abs(P.x), e = engines[P.x < 0 ? 'L' : 'R'];
-  if (S.phase !== 'airport' && onWing(P.x, P.z) && ax > ENG_X - 2.3 && ax < ENG_X + 2.3 && P.z < ENG_Z1 + 0.3 && e.spin > 8) {
+  if (S.phase !== 'airport' && !holdingWall() && onWing(P.x, P.z) && ax > ENG_X - 2.3 && ax < ENG_X + 2.3 && P.z < ENG_Z1 + 0.3 && e.spin > 8) {
     startFalling(Math.sign(P.x) * 6, 8, 'The propeller blast blew you clean off the wing!');
     return;
   }
@@ -300,5 +305,38 @@ function updatePlayer(dt) {
     P.lvx *= f; P.lvz *= f;
     if (P.vy === 0 && Math.hypot(P.lvx, P.lvz) < 0.4) { P.launched = false; P.lvx = P.lvz = 0; }
   }
-  if (g === null && P.y < -2.5) startFalling(mx * 0.5, mz);
+  if (hangOn(dt)) return;
+  if (g === null && P.y < -2.5 && !holdingWall()) startFalling(mx * 0.5, mz);
+}
+// Holding on to something above you (an edge you caught, the plane's side…): you hang from your hands instead
+// of falling. W or Space pulls you up, and over the top onto it. Returns true while you're hanging.
+const HANG = 1.25;   // hands to feet, arms up (we're short)
+function hangOn(dt) {
+  const grips = GRAB.hands.filter(h => h && h.k === 'wall');
+  if (!grips.length) { P.hang = false; return false; }
+  const top = Math.max(...grips.map(h => h.at[1])), gx = grips.reduce((a, h) => a + h.at[0], 0) / grips.length, gz = grips.reduce((a, h) => a + h.at[2], 0) / grips.length;
+  const g = groundAt(P.x, P.z);
+  if (g !== null && P.y <= g + 0.05 && P.y > g - 0.3) { P.hang = false; return false; }   // (feet on the floor: just holding on)
+  if (P.y <= top - HANG) { P.y = top - HANG; P.hang = true; }
+  if (!P.hang) return false;                                // (still dropping toward your arms' full stretch)
+  P.vy = 0; P.mvx *= 0.8; P.mvz *= 0.8;
+  const ledge = grips.find(h => h.ledge !== undefined), climb = keys.w || keys[' '] || keys.arrowup;
+  if (ledge && climb) {
+    // pull up: up toward your hands, and in toward the edge
+    P.y = Math.min(ledge.ledge, P.y + 1.6 * dt);
+    // (which way is "in": the way you reached to catch it)
+    let dx = gx - P.x, dz = gz - P.z, d = Math.hypot(dx, dz);
+    if (ledge.in) { dx = ledge.in[0]; dz = ledge.in[1]; d = 1; } else if (d < 0.05) { dx = 0; dz = -1; d = 1; }
+    const k = Math.min(1, 3 * dt);
+    if (Math.hypot(gx - P.x, gz - P.z) > 0.3) { P.x += (gx - P.x) * k * 0.5; P.z += (gz - P.z) * k * 0.5; }
+    if (P.y > ledge.ledge - 0.45) {
+      // over the top: up onto it, just past the edge
+      P.x = gx + dx / d * 0.7; P.z = gz + dz / d * 0.7;
+      if (groundAt(P.x, P.z) === null) { P.x = gx; P.z = gz; }
+      P.y = groundAt(P.x, P.z) ?? ledge.ledge; P.vy = 0;
+      GRAB.hands = [null, null]; P.mantleT = S.t; P.hang = false;
+      beep(420, .08, 'triangle', .04);
+    }
+  }
+  return true;
 }

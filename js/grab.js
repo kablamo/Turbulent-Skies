@@ -117,9 +117,34 @@ function updateGrab() {
     if (got) { GRAB.hands[i] = got; beep(got.k === 'wall' ? 260 : 420, .06, 'triangle', .04); }
     if (GRAB.hands[i] && GRAB.hands[i].k === 'item' && GRAB.hands[1 - i] && GRAB.hands[1 - i].k === 'item') { beep(420, .06, 'triangle', .04); break; }
   }
+  // going over an edge (off the wing, out of a door, off the ramp) with your hands out: they catch hold of it
+  if (!GRAB.hands.some(h => h)) catchLedge();
   // hands on a wall stay put there
   Rg.ignoreVeh = heldVehicle();
   Rg.pins = GRAB.hands.map((h, i) => h && h.k === 'wall' ? { i: 5 + i, pos: new THREE.Vector3().fromArray(h.at) } : null).filter(Boolean);
+}
+
+// Dropping (not standing on anything) with Grab held: look round for an edge within arm's reach above you, the
+// nearest bit of floor/wing/ramp you could hang from, and grab it with both hands. (Then you hang there, and W
+// or Space pulls you up onto it: physics.js.)
+function catchLedge() {
+  const g = groundAt(P.x, P.z);
+  if (g !== null && P.y > g - 0.05) return;                 // (standing on something)
+  if (S.t - (P.mantleT || -9) < 0.4) return;                // (just climbed up)
+  let best = null;
+  for (let r = 0.15; r <= 1.2 && !best; r += 0.15) for (let a = 0; a < 16; a++) {
+    const t = a / 16 * Math.PI * 2, x = P.x + Math.sin(t) * r, z = P.z + Math.cos(t) * r, s = groundAt(x, z);
+    if (s === null || s < P.y + 0.5 || s > P.y + 2.4) continue;            // nothing there, or out of reach
+    if (!canGo(P.x, P.z, s, x, z)) continue;                              // (not through the plane's wall)
+    const d = Math.hypot(x - P.x, z - P.z);
+    if (!best || d < best.d) best = { x, z, s, d, t };
+  }
+  if (!best) return;
+  // both hands on the edge, a shoulder's width apart along it
+  const ax = Math.cos(best.t) * 0.2, az = -Math.sin(best.t) * 0.2;
+  GRAB.hands = [-1, 1].map(k => ({ k: 'wall', at: [r2g(best.x + ax * k), r2g(best.s + 0.03), r2g(best.z + az * k)], ledge: r2g(best.s), in: [r2g(Math.sin(best.t)), r2g(Math.cos(best.t))] }));
+  P.vy = Math.max(P.vy, 0);
+  beep(260, .06, 'triangle', .04);
 }
 
 // host: move whatever each player is holding to their hands; let things go (with a fling) when they let go
