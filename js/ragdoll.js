@@ -106,8 +106,35 @@ function ragSubstep(Rg, fx, fz) {
       }
     }
   }
+  // someone holding you: you don't go through their body, you're pushed out against it
+  if (Rg.pins) { const seen = new Set(); for (const pin of Rg.pins) if (pin.body && !seen.has(pin.body)) { seen.add(pin.body); pushOutOfBody(pos, prev, pin.body); } }
   // pinned points (a hand gripping something, or a wrist someone else is holding) go exactly where they're held
   if (Rg.pins) for (const pin of Rg.pins) pos[pin.i].copy(pin.pos);
+}
+// a body as solid tubes between its points: [from, to, thickness] (the head, the torso's four edges, upper
+// arms and legs; not the forearms, they're doing the holding)
+const BODY_CAPS = [[0, 0, 0.15], [1, 2, 0.12], [1, 7, 0.13], [2, 8, 0.13], [7, 8, 0.13], [1, 8, 0.13], [2, 7, 0.13],
+  [7, 9, 0.09], [9, 11, 0.08], [8, 10, 0.09], [10, 12, 0.08]];
+function pushOutOfBody(pos, prev, body) {
+  const cx = (body[7].x + body[8].x) / 2, cz = (body[7].z + body[8].z) / 2;
+  for (let i = 0; i < pos.length; i++) {
+    const p = pos[i], pr = RAG_R[i] * 0.8;
+    if (Math.abs(p.x - cx) > 1.2 || Math.abs(p.z - cz) > 1.2) continue;
+    for (const [a, b, r] of BODY_CAPS) {
+      // the nearest spot on the tube's middle line
+      const A = body[a], B = body[b], ex = B.x - A.x, ey = B.y - A.y, ez = B.z - A.z, ll = ex * ex + ey * ey + ez * ez;
+      const t = ll > 1e-9 ? clamp(((p.x - A.x) * ex + (p.y - A.y) * ey + (p.z - A.z) * ez) / ll, 0, 1) : 0;
+      let dx = p.x - (A.x + ex * t), dy = p.y - (A.y + ey * t), dz = p.z - (A.z + ez * t);
+      const d = Math.hypot(dx, dy, dz), m = r + pr;
+      if (d >= m) continue;
+      if (d < 1e-4) { dx = p.x - cx; dy = 0; dz = p.z - cz; const h = Math.hypot(dx, dz) || 1; dx /= h; dz /= h; }   // (dead centre: straight out sideways)
+      else { dx /= d; dy /= d; dz /= d; }
+      // out onto the surface, and stop moving inwards (sliding along it is fine): a soft bump, no bounce
+      const k = m - d, q = prev[i], vn = Math.min(0, (p.x - q.x) * dx + (p.y - q.y) * dy + (p.z - q.z) * dz);
+      p.x += dx * k; p.y += dy * k; p.z += dz * k;
+      q.x += dx * (k + vn); q.y += dy * (k + vn); q.z += dz * (k + vn);
+    }
+  }
 }
 // can a body point move from q to p? (high up in the cabin it sails over the seats; only the hull stops it)
 const ragCanGo = (q, p) => (p.y > 1.15 && insideHull(q.x, q.z) && insideHull(p.x, p.z)) || canGo(q.x, q.z, p.y, p.x, p.z);

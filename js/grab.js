@@ -129,6 +129,13 @@ function hostGrabs(dt) {
     const flat = who.isLocal ? null : who.rg;
     const hand = h => who.isLocal ? (ME && ME.rag ? ME.rag.pos[5 + h].clone() : null) : flat ? new THREE.Vector3(flat[(5 + h) * 3], flat[(5 + h) * 3 + 1], flat[(5 + h) * 3 + 2]) : null;
     who.gPrev = who.gPrev || [null, null];
+    // their body's points (so whoever they're holding doesn't go through them)
+    let body = null;
+    if (who.isLocal) body = ME && ME.rag ? ME.rag.pos : null;
+    else if (flat && flat.length >= 39) {
+      body = who.bodyPts = who.bodyPts || Array.from({ length: 13 }, () => new THREE.Vector3());
+      body.forEach((v, k) => v.set(flat[k * 3], flat[k * 3 + 1], flat[k * 3 + 2]));
+    }
     for (let h = 0; h < 2; h++) {
       const cur = grabs[h], was = who.gPrev[h], hp = hand(h);
       const same = cur && was && cur.k === was.k && cur.i === was.i;
@@ -145,7 +152,7 @@ function hostGrabs(dt) {
         const v = vehicles[cur.i], pz = who.isLocal ? P : who.pose, pose = carriedVehiclePose(cur, pz.x, pz.z, bodyYaw(who));
         if (v && vehicleFits(v, pose.x, pose.z, pose.h)) { v.x = pose.x; v.z = pose.z; v.h = pose.h; syncVehicle(v); }
       }
-      else holdPassenger(passengers[cur.i], cur.pt, hp, `${idOf(who)}${h}`);
+      else holdPassenger(passengers[cur.i], cur.pt, hp, `${idOf(who)}${h}`, body);
     }
   }
 }
@@ -170,7 +177,7 @@ function holdItem(it, held, face, dt) {
   it.x = x; it.y = y; it.z = z;
   it.g.position.set(x, y, z);
 }
-function holdPassenger(p, pt, hp, key) {
+function holdPassenger(p, pt, hp, key, body) {
   if (!p || p.state === 'gone') return;
   if (!p.rag || p.state === 'down' || p.state === 'getup') {
     // grabbed: out of their seat (or wherever they were) and floppy
@@ -181,7 +188,7 @@ function holdPassenger(p, pt, hp, key) {
     p.state = 'air'; p.rag.targets = null; p.rag.k = 0;
   }
   p.rag.pins = (p.rag.pins || []).filter(q => q.key !== key);
-  p.rag.pins.push({ key, i: pt, pos: hp.clone() });
+  p.rag.pins.push({ key, i: pt, pos: hp.clone(), body });
 }
 function letGo(g) {
   if (g.k === 'item') {
