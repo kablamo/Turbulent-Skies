@@ -410,8 +410,38 @@ function triMesh(list, mat, colorOf) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g.computeVertexNormals();
+  if (list[0] && list[0].vn) {
+    const nor = new Float32Array(list.length * 9);
+    list.forEach((t, i) => { for (let k = 0; k < 3; k++) nor.set([t.vn[k].x, t.vn[k].y, t.vn[k].z], i * 9 + k * 3); });
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  } else g.computeVertexNormals();
   return new THREE.Mesh(g, mat);
+}
+// make sure every bit of the fuselage's skin faces out (a flipped face would show its paint inside the cabin):
+// a face pointing in towards the middle of the body gets turned round
+function faceOutwards(tris) {
+  const bin = z => Math.round(z * 2), sum = new Map();
+  const isBody = t => Math.abs(t.c.x) <= HULL_X + 0.15;
+  for (const t of tris) if (isBody(t)) { const k = bin(t.c.z), e = sum.get(k) || [0, 0, 0]; e[0] += t.c.y; e[1]++; sum.set(k, e); }
+  for (const t of tris) {
+    if (!isBody(t)) continue;
+    const e = sum.get(bin(t.c.z)), cy = e[0] / e[1];
+    const out = new THREE.Vector3(t.c.x, t.c.y - cy, 0);
+    if (out.lengthSq() > 0.01 && t.n.dot(out) < 0) { [t[1], t[2]] = [t[2], t[1]]; t.n.negate(); }
+  }
+}
+// smooth shading across gently curving skin, but crisp edges where it folds sharply (wing edges, fin tips)
+function smoothNormals(tris) {
+  const key = v => Math.round(v.x * 500) + ',' + Math.round(v.y * 500) + ',' + Math.round(v.z * 500), at = new Map();
+  for (const t of tris) {
+    const area = new THREE.Vector3().subVectors(t[1], t[0]).cross(new THREE.Vector3().subVectors(t[2], t[0])).length();
+    for (const v of t) { const k = key(v); if (!at.has(k)) at.set(k, []); at.get(k).push([t.n, area]); }
+  }
+  for (const t of tris) t.vn = t.map(v => {
+    const n = new THREE.Vector3();
+    for (const [fn, a] of at.get(key(v))) if (fn.dot(t.n) > 0.6) n.addScaledVector(fn, a);
+    return n.lengthSq() > 0 ? n.normalize() : t.n.clone();
+  });
 }
 // a stand-in plane, built out of boxes, for when the model can't load (e.g. opened straight from a file)
 function boxyPlaneTris() {
@@ -452,25 +482,29 @@ function dressPlane(scene) {
     scene.traverse(o => {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(toGame, o.matrixWorld);
-      if (o.name !== 'Cube') { engineParts.push({ o, m }); return; }      // (Cube.001 and on are propeller blades)
-      // the body: both halves (the model's own half, and its mirror image)
+      if (o.name !== 'Cube') { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); engineParts.push({ o, m }); return; }   // (Cube.001 and on are propeller blades)
       const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry, pos = g.attributes.position;
-      let half = [];
-      for (let i = 0; i < pos.count; i += 3) half.push([0, 1, 2].map(k => new THREE.Vector3().fromBufferAttribute(pos, i + k).applyMatrix4(m)));
-      half = splitTris(half, 0, 0).filter(t => triInfo(t).c.x > 1e-4 && !(Math.abs(t.c.x) < 0.02 && Math.abs(t.n.x) > 0.9));
-      for (const t of half) {
-        t.reverse();                                                   // (the turn-round flipped which way it faced)
-        tris.push(t, [t[2], t[1], t[0]].map(p => new THREE.Vector3(-p.x, p.y, p.z)));
+      let body = [];
+      for (let i = 0; i < pos.count; i += 3) body.push([0, 1, 2].map(k => new THREE.Vector3().fromBufferAttribute(pos, i + k).applyMatrix4(m)));
+      body.forEach(t => t.reverse());                                  // (the turn-round flipped which way it faced)
+      // only half a plane (the body cut down the middle)? then the other half is its mirror image
+      if (Math.min(...body.map(t => Math.min(t[0].x, t[1].x, t[2].x))) > -1) {
+        body = splitTris(body, 0, 0).filter(t => triInfo(t).c.x > 1e-4 && !(Math.abs(t.c.x) < 0.02 && Math.abs(t.n.x) > 0.9));
+        for (const t of [...body]) body.push([t[2], t[1], t[0]].map(p => new THREE.Vector3(-p.x, p.y, p.z)));
       }
+      tris.push(...body);
     });
   }
   if (!tris.length) tris = boxyPlaneTris();
   // cut along every line where the skin gets split up or painted
   const side = t => Math.abs(t[0].x) > HULL_X - 0.3 || Math.abs(t[1].x) > HULL_X - 0.3 || Math.abs(t[2].x) > HULL_X - 0.3;
-  for (const z of [-1.2, 1.2, REAR, RAMP_Z1, ...segments.flatMap(sg => [sg.z0, sg.z1])]) tris = splitTris(tris, 2, z);
+  for (const z of [-9.3, -6.3, -1.2, 1.2, REAR, RAMP_Z1, ...segments.flatMap(sg => [sg.z0, sg.z1])]) tris = splitTris(tris, 2, z);
+  tris = splitTris(splitTris(tris, 1, 1.5, t => t[0].z < -6), 1, 2.6, t => t[0].z < -6);
   for (const y of [SEG_Y0, 2.3, SEG_Y1, 2.15, 2.45, 2.55, 2.65]) tris = splitTris(tris, 1, y, side);
   for (const s of [-1, 1]) tris = splitTris(tris, 0, s * WING_IN);
   tris.forEach(triInfo);
+  faceOutwards(tris);
+  smoothNormals(tris);
 
   const parts = { main: [], segs: segments.map(() => ({ L: [], R: [] })), wingL: [], wingR: [] };
   for (const t of tris) {
@@ -482,14 +516,15 @@ function dressPlane(scene) {
     if (si >= 0) parts.segs[si][c.x < 0 ? 'L' : 'R'].push(t);
     else parts.main.push(t);
   }
-  const body = t => Math.abs(t.c.x) <= HULL_X + 0.05 && t.c.z < 21.2;
+  const body = t => Math.abs(t.c.x) <= HULL_X + 0.15 && t.c.z < 21.2;
   const paint = t => {
     const c = t.c, n = t.n, ax = Math.abs(c.x);
     if (!body(t)) return ax > 7.6 && c.z > 18 ? PC.blue : PC.wing;              // wings, tailplane, tail fins
-    if (c.z < -6.4 && c.z > -10.8 && c.y > 1.15 && c.y < 2.95 && (n.z < -0.25 || (Math.abs(n.x) > 0.7 && c.y < 2.1))) return PC.glass;   // the windscreen
+    if (c.z < -6.3 && c.z > -9.3 && c.y > 1.5 && c.y < 2.6) return PC.glass;   // the windscreen
     if (c.y < -0.7) return PC.belly;
-    if (Math.abs(n.x) > 0.7 && c.y > 2.15 && c.y < 2.45) return PC.blue;        // the stripes down each side
-    if (Math.abs(n.x) > 0.7 && c.y > 2.55 && c.y < 2.65) return PC.red;
+    const flank = Math.abs(n.x) > 0.8 && c.z > -8 && c.z < 14;
+    if (flank && c.y > 2.15 && c.y < 2.45) return PC.blue;        // the stripes down each side
+    if (flank && c.y > 2.55 && c.y < 2.65) return PC.red;
     return PC.white;
   };
   const inside = t => t.n.y > 0.7 || t.c.y > 3.3 ? PC.ceiling : PC.lining;
@@ -518,7 +553,7 @@ function dressPlane(scene) {
   const blades = { L: [], R: [] };
   for (const { o, m } of engineParts) {
     const c = new THREE.Box3().setFromBufferAttribute(o.geometry.attributes.position).getCenter(new THREE.Vector3()).applyMatrix4(m);
-    const s = c.x < 0 ? 'L' : 'R', e = engines[s], blade = o.geometry.attributes.position.count < 200;
+    const s = c.x < 0 ? 'L' : 'R', e = engines[s], blade = /^cube/i.test(o.name);
     const mesh = new THREE.Mesh(o.geometry, blade ? M.dark : M.hull);
     (blade ? blades[s] : []).push({ mesh, m, c });
     if (!blade) { e.group.updateMatrix(); mesh.applyMatrix4(e.group.matrix.clone().invert().multiply(m)); e.group.add(mesh); }
