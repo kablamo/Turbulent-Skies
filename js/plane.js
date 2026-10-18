@@ -26,17 +26,17 @@ function drawMovie(g, w, h) {
 
 // One ring of the cabin wall. Each side panel (its piece of the outer skin, once the plane model has
 // loaded, and the window in it) is kept together in `meshes` so the whole thing rips away at once.
-const SEG_Y0 = 0, SEG_Y1 = 3.0;
+const SEG_Y0 = 0, SEG_Y1 = 3.0, WIN = { y: 1.55, w: 0.4, h: 0.55 };
 function hullSegment(z0, z1) {
   const seg = { z0, z1, z: (z0 + z1) / 2, sides: {} };
   for (const side of ['L', 'R']) {
     const s = side === 'L' ? -1 : 1, wx = s * HULL_X;
-    const glass = box(0.2, 0.5, 0.34, M.window, wx, 1.55, seg.z);
-    glass.renderOrder = 1;
+    // the window is a real hole in the skin (cut out when the model loads), glazed, with a frame round it
+    const fx = wx - s * 0.04, hw = WIN.w / 2, hh = WIN.h / 2, t = 0.06;
     seg.sides[side] = { open: false, patched: false, meshes: [
-      glass,
-      box(0.05, 0.64, 0.48, M.frame, wx - s * 0.06, 1.55, seg.z),                     // window frame
-      box(0.04, rand(0.05, 0.28), 0.35, M.white, wx - s * 0.09, 1.72, seg.z),         // window shade
+      box(0.06, t, WIN.w + 2 * t, M.frame, fx, WIN.y + hh + t / 2, seg.z), box(0.06, t, WIN.w + 2 * t, M.frame, fx, WIN.y - hh - t / 2, seg.z),
+      box(0.06, WIN.h, t, M.frame, fx, WIN.y, seg.z - hw - t / 2), box(0.06, WIN.h, t, M.frame, fx, WIN.y, seg.z + hw + t / 2),
+      box(0.03, rand(0.05, 0.2), WIN.w, M.white, wx - s * 0.09, WIN.y + hh - 0.1, seg.z),   // window shade, part pulled down
     ] };
   }
   segments.push(seg);
@@ -371,6 +371,8 @@ const PLANE_SCALE = 1.5, PLANE_LIFT = 0.58, PLANE_SHIFT = 6;
 const PLANE_MAT = {
   skin: std(0xffffff, { vertexColors: true, roughness: .45, metalness: .15 }),
   lining: std(0xffffff, { vertexColors: true, roughness: .85, side: THREE.BackSide }),
+  glass: std(0xbfe4ff, { transparent: true, opacity: .25, roughness: .05, metalness: .3, side: THREE.DoubleSide, depthWrite: false }),
+  windscreen: std(0x7fb0d8, { transparent: true, opacity: .35, roughness: .05, metalness: .4, side: THREE.DoubleSide, depthWrite: false }),
 };
 const PC = {
   white: new THREE.Color(0xf4f6f9), belly: new THREE.Color(0x8fa3b8), blue: new THREE.Color(0x1f4fa8), red: new THREE.Color(0xd8342c),
@@ -499,6 +501,8 @@ function dressPlane(scene) {
   // cut along every line where the skin gets split up or painted
   const side = t => Math.abs(t[0].x) > HULL_X - 0.3 || Math.abs(t[1].x) > HULL_X - 0.3 || Math.abs(t[2].x) > HULL_X - 0.3;
   for (const z of [-9.3, -6.3, -1.2, 1.2, REAR, RAMP_Z1, ...segments.flatMap(sg => [sg.z0, sg.z1])]) tris = splitTris(tris, 2, z);
+  for (const sg of segments) for (const d of [-1, 1]) tris = splitTris(tris, 2, sg.z + d * WIN.w / 2, side);
+  for (const y of [WIN.y - WIN.h / 2, WIN.y + WIN.h / 2]) tris = splitTris(tris, 1, y, side);
   tris = splitTris(splitTris(tris, 1, 1.5, t => t[0].z < -6), 1, 2.6, t => t[0].z < -6);
   for (const y of [SEG_Y0, 2.3, SEG_Y1, 2.15, 2.45, 2.55, 2.65]) tris = splitTris(tris, 1, y, side);
   for (const s of [-1, 1]) tris = splitTris(tris, 0, s * WING_IN);
@@ -506,21 +510,22 @@ function dressPlane(scene) {
   faceOutwards(tris);
   smoothNormals(tris);
 
-  const parts = { main: [], segs: segments.map(() => ({ L: [], R: [] })), wingL: [], wingR: [] };
+  const parts = { main: [], segs: segments.map(() => ({ L: [], R: [], glassL: [], glassR: [] })), wingL: [], wingR: [], glass: [] };
   for (const t of tris) {
     const c = t.c, n = t.n, ax = Math.abs(c.x), wall = ax > HULL_X - 0.15 && Math.abs(n.x) > 0.7;
     if (wall && Math.abs(c.z) < 1.2 && c.y > 0 && c.y < 2.3) continue;                        // exit door openings
     if (n.y < -0.5 && c.z > REAR && c.z < RAMP_Z1 && ax < RAMP_W0 + 0.15) continue;           // the ramp opening
     if (ax > WING_IN && c.z < 12) { parts[c.x < 0 ? 'wingL' : 'wingR'].push(t); continue; }
+    if (ax <= HULL_X + 0.15 && c.z < -6.3 && c.z > -9.3 && c.y > 1.5 && c.y < 2.6) { parts.glass.push(t); continue; }   // the windscreen
     const si = wall && c.y > SEG_Y0 && c.y < SEG_Y1 ? segments.findIndex(sg => c.z > sg.z0 && c.z < sg.z1) : -1;
-    if (si >= 0) parts.segs[si][c.x < 0 ? 'L' : 'R'].push(t);
+    const pane = si >= 0 && Math.abs(c.z - segments[si].z) < WIN.w / 2 && Math.abs(c.y - WIN.y) < WIN.h / 2;
+    if (si >= 0) parts.segs[si][(pane ? 'glass' : '') + (c.x < 0 ? 'L' : 'R')].push(t);
     else parts.main.push(t);
   }
   const body = t => Math.abs(t.c.x) <= HULL_X + 0.15 && t.c.z < 21.2;
   const paint = t => {
     const c = t.c, n = t.n, ax = Math.abs(c.x);
     if (!body(t)) return ax > 7.6 && c.z > 18 ? PC.blue : PC.wing;              // wings, tailplane, tail fins
-    if (c.z < -6.3 && c.z > -9.3 && c.y > 1.5 && c.y < 2.6) return PC.glass;   // the windscreen
     if (c.y < -0.7) return PC.belly;
     const flank = Math.abs(n.x) > 0.8 && c.z > -8 && c.z < 14;
     if (flank && c.y > 2.15 && c.y < 2.45) return PC.blue;        // the stripes down each side
@@ -528,6 +533,11 @@ function dressPlane(scene) {
     return PC.white;
   };
   const inside = t => t.n.y > 0.7 || t.c.y > 3.3 ? PC.ceiling : PC.lining;
+  // window glass: the very piece of skin that was cut out, see-through
+  const glazing = (list, mat = PLANE_MAT.glass) => {
+    if (!list.length) return [];
+    const m = triMesh(list, mat, () => PC.white); m.renderOrder = 2; plane.add(m); return [m];
+  };
   const skin = (list, parent) => {
     const out = [];
     if (!list.length) return out;
@@ -537,7 +547,8 @@ function dressPlane(scene) {
     return out;
   };
   skin(parts.main, plane);
-  parts.segs.forEach((sg, i) => { for (const s of ['L', 'R']) segments[i].sides[s].meshes.push(...skin(sg[s], plane)); });
+  parts.segs.forEach((sg, i) => { for (const s of ['L', 'R']) segments[i].sides[s].meshes.push(...skin(sg[s], plane), ...glazing(sg['glass' + s])); });
+  glazing(parts.glass, PLANE_MAT.windscreen);
   for (const s of ['L', 'R']) skin(parts['wing' + s], wings[s].panel);
   // the tail fins get the flight number
   const fin = new THREE.Box3();
