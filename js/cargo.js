@@ -177,7 +177,7 @@ function applyCargoFlags(it, f) {
 }
 
 // ---------------------------------------------------------------- the AUTO LOAD button (in the terminal)
-// One press and the bags the flight still needs fly in a big arc from the pile into the plane's cargo bay.
+// Hold the button down and the bags the flight still needs fly in a big arc from the pile into the plane's cargo bay.
 // (It won't touch the nuke, and it leaves animals in their carriers alone.)
 (function autoLoadKiosk() {
   const k = new THREE.Group(); k.position.set(3.6, GROUND, TERM.z0 + 2.4); airport.add(k);
@@ -186,7 +186,7 @@ function applyCargoFlags(it, f) {
   const btn = cyl(0.13, 0.15, 0.08, std(0x22dd55, { emissive: 0x0a4418 }), 0, 1.08, 0, k);
   textPlane(1.3, 0.34, '🧳 AUTO LOAD ➜ ✈', '#2c4a63', '#ffd34a', k, 0, 1.6, -0.26, Math.PI, 'bold 44px sans-serif');
   box(0.06, 0.5, 0.06, M.steel, 0, 1.3, 0.2, k);
-  const hit = box(0.8, 1.4, 0.7, M.hit, 0, 0.8, 0, k); hit.userData.autoload = true; targets.push(hit);
+  const hit = box(0.8, 0.6, 0.7, M.hit, 0, 1.1, 0, k); hit.userData.autoload = true; targets.push(hit);   // (just the top with the button: aiming past the kiosk at a bag or someone behind it doesn't count)
   BLOCKS.push([3.6 - 0.4, 3.6 + 0.4, TERM.z0 + 2.4 - 0.3, TERM.z0 + 2.4 + 0.3]);
   window.autoLoadButton = btn;
 })();

@@ -37,7 +37,8 @@ function takeOff(who = LOCAL) {
 
 // what pressing E does on whatever the crosshair is over (null = nothing, look past it)
 function actionFor(ud, who = LOCAL) {
-  if (ud.autoload) return S.phase === 'airport' ? { key: 'autoload', type: 'press', ready: true, label: '🧳 AUTO LOAD the luggage into the plane', done: () => autoLoad() } : null;
+  // (held down for a moment, and only when you're aiming right at it, so nobody sets it off by accident)
+  if (ud.autoload) return S.phase === 'airport' ? { key: 'autoload', type: 'hold', dur: 1.2, aimOnly: true, ready: true, label: '🧳 AUTO LOAD the luggage into the plane', done: () => autoLoad() } : null;
   if (ud.detonator) {
     const nk = items.find(i => i.type === BAGS.nuke);
     const ok = nk && nk.state !== 'gone' && !nk.armed;
@@ -221,7 +222,7 @@ function interact(dt) {
     sweep: for (const dp of [0, -0.3, -0.6, -0.9, 0.3]) for (const dy of [0, 0.25, -0.25]) {
       dir.copy(lookDir({ yaw: P.yaw + dy, pitch: clamp(P.pitch + dp, -1.3, 0.8) })).applyMatrix3(m3).normalize();
       raycaster.set(_eyeW, dir);
-      for (const h of raycaster.intersectObjects(targets, false)) { const a = actionFor(h.object.userData); if (a) { act = a; ref = h.object.userData; break sweep; } }
+      for (const h of raycaster.intersectObjects(targets, false)) { const a = actionFor(h.object.userData); if (a && !a.aimOnly) { act = a; ref = h.object.userData; break sweep; } }
     }
   }
   // on a client the host does the real work; here we only show the prompt and send what you did
