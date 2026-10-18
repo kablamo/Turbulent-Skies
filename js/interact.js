@@ -449,8 +449,9 @@ function showPause(help) {
   $('ovBox').classList.toggle('wide', !!help);
   $('ovBox').innerHTML = help
     ? helpHTML() + '<button class="big" id="resumeBtn">Back to the game</button>'
-    : '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button> <button class="big alt" id="helpBtn">🎮 Controls</button><p style="opacity:.7;font-size:13px">or press Enter / P</p>';
+    : '<h1>⏸ Paused</h1><p>The plane will wait for you. Probably.</p><button class="big" id="resumeBtn">Resume</button> <button class="big alt" id="helpBtn">🎮 Controls</button> <button class="big alt" id="respawnBtn">↺ Respawn</button><p style="opacity:.7;font-size:13px">or press Enter / P · stuck somewhere? Respawn</p>';
   $('resumeBtn').onclick = resume;
+  if ($('respawnBtn')) $('respawnBtn').onclick = () => { resume(); respawnMe(); };
   if ($('helpBtn')) $('helpBtn').onclick = () => showPause(true);
   $('overlay').style.display = 'flex';
 }

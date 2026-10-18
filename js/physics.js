@@ -140,6 +140,24 @@ function respawn() {
   S.integrity -= 3; S.needs.calm -= 15; S.falls++;
   say(pick(['You fell off the plane! Luckily you packed a parachute... and a grappling hook.', 'You fell off! A passing seagull carried you back. Passengers are rattled.', 'Somehow you climbed back in through the landing gear. The passengers saw everything.']), 'bad');
 }
+// the Respawn button (pause menu): stuck somewhere? back aboard by the front galley, no penalty
+function respawnMe() {
+  if (!S.running || S.over) return;
+  if (carriedByName()) return say(`${carriedByName()} is carrying you: mash Space to wriggle free first!`, 'bad');
+  if (isClient() && (S.driving || S.flying)) return say(`Get ${S.flying ? 'up from the controls' : 'out of the ' + S.driving.name} first (${INTERACT}).`, 'bad');
+  if (S.held) throwHeld(1);
+  if (carryingName()) { if (isClient()) netSend({ t: 'throw', strength: 1, yaw: P.yaw, pitch: P.pitch }); else releasePlayer(LOCAL, 1); }
+  if (S.driving) exitVehicle();
+  if (S.flying) { S.flying = false; S.chase = false; say(inAir() ? 'Autopilot holding course.' : 'Autopilot is handling the takeoff.'); }
+  if (P.sitV) standFromSeat();
+  GRAB.hands = [null, null]; if (ME) ME.rag = null;
+  // at the airport: back where you started, in the terminal; once you're off: by the front galley
+  const ap = S.phase === 'airport', yaw = ap ? 0 : Math.PI;
+  Object.assign(P, { x: 0, y: ap ? GROUND : 0, z: ap ? TERM.z0 + 4.5 : GALLEY - 0.6, vy: 0, vz: 0, vx: 0, mvx: 0, mvz: 0, yaw, pitch: 0, falling: false, launched: false, lvx: 0, lvz: 0 });
+  P.face = yaw; $('fade').style.opacity = 0;
+  S.camBoom = S.camEyeY = undefined;
+  say(ap ? '↺ Respawned: back in the terminal.' : '↺ Respawned: back by the front galley.');
+}
 function startFalling(vx, vz, msg) {
   if (S.held) throwHeld(1);
   if (carryingName()) { if (isClient()) netSend({ t: 'throw', strength: 1, yaw: P.yaw, pitch: P.pitch }); else releasePlayer(LOCAL, 1); }
