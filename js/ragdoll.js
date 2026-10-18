@@ -82,7 +82,7 @@ function ragSubstep(Rg, fx, fz) {
       q.x = p.x - (p.x - q.x) * fr; q.z = p.z - (p.z - q.z) * fr;
     }
     if (insideHull(p.x, p.z)) {
-      const top = CY + Math.sqrt(Math.max(0, R * R - p.x * p.x)) - r - 0.1;
+      const top = ceilAt(p.z) - r - 0.1;
       if (p.y > top) { p.y = top; q.y = Math.max(q.y, p.y); }
     }
   }

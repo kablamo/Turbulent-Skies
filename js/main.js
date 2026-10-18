@@ -111,7 +111,7 @@ function updatePassengerNeeds(dt, dead, openings) {
     if (!S.seatbelt && sitters.length) {
       const p = pick(sitters), front = p.seat.z < 0;
       p.state = 'walk'; setPose(p, 'stand'); p.then = 'lav';
-      p.path = [{ x: p.seat.x, z: p.seat.z - 0.7 }, { x: 0, z: p.seat.z - 0.7 }, front ? { x: 0, z: -6.3 } : { x: 0, z: 9.8 }, front ? { x: -0.85, z: -7.6 } : { x: 0.85, z: 9.8 }];
+      p.path = [{ x: p.seat.x, z: p.seat.z - 0.7 }, { x: 0, z: p.seat.z - 0.7 }, front ? { x: 0, z: lavDoors.L.z0 + 0.4 } : { x: 0, z: lavDoors.R.z0 + 0.4 }, front ? { x: -0.6, z: lavDoors.L.z0 + 0.4 } : { x: 0.6, z: lavDoors.R.z0 + 0.4 }];
     }
   }
   for (const p of passengers) {
@@ -140,11 +140,11 @@ function updateEffects(dt, flight) {
     while (e.acc > 1 / 50) {
       e.acc -= 1 / 50;
       if (e.state === 'fire') {
-        emitLocal(fireFx, sx + rand(-.5, .5), 1.2 + rand(0, .8), rand(-1.2, 2.0), rand(-1, 1), rand(1.5, 4), 14, pick([0xff8a20, 0xff4a10, 0xffcc44]), rand(.6, 1.2), rand(.3, .6), 1.5);
-        if (Math.random() < .5) emitLocal(smokeFx, sx, 1.9, 2.2, rand(-1, 1), rand(1, 3), 22, 0x2a2a2a, 1.2, 2, 4, .7);
-      } else if (e.state === 'fail' && Math.random() < .4) emitLocal(smokeFx, sx, 1.2, 2.4, rand(-.5, .5), rand(0, 1), 20, 0x666666, .8, 1.5, 3, .5);
-      else if (e.state === 'dead' && Math.random() < .15) emitLocal(smokeFx, sx, 1.4, 2.2, 0, 1, 18, 0x444444, .8, 1.5, 3, .4);
-      if (e.leak && Math.random() < .5) emitLocal(smokeFx, s === 'L' ? -FUEL_X : FUEL_X, 0.15, 3, rand(-.3, .3), rand(.5, 1.5), 9, 0xeef4ff, .3, 1, 3, .6);
+        emitLocal(fireFx, sx + rand(-.6, .6), ENG_Y + 1.2 + rand(0, .8), rand(ENG_Z0 + 1, ENG_Z1), rand(-1, 1), rand(1.5, 4), 14, pick([0xff8a20, 0xff4a10, 0xffcc44]), rand(.6, 1.2), rand(.3, .6), 1.5);
+        if (Math.random() < .5) emitLocal(smokeFx, sx, ENG_Y + 1.9, ENG_Z1, rand(-1, 1), rand(1, 3), 22, 0x2a2a2a, 1.2, 2, 4, .7);
+      } else if (e.state === 'fail' && Math.random() < .4) emitLocal(smokeFx, sx, ENG_Y + 1.2, ENG_Z1, rand(-.5, .5), rand(0, 1), 20, 0x666666, .8, 1.5, 3, .5);
+      else if (e.state === 'dead' && Math.random() < .15) emitLocal(smokeFx, sx, ENG_Y + 1.4, ENG_Z1, 0, 1, 18, 0x444444, .8, 1.5, 3, .4);
+      if (e.leak && Math.random() < .5) emitLocal(smokeFx, s === 'L' ? -FUEL_X : FUEL_X, wingY(FUEL_X, FUEL_Z) + 0.15, FUEL_Z, rand(-.3, .3), rand(.5, 1.5), 9, 0xeef4ff, .3, 1, 3, .6);
     }
   }
   // the barbecue smokes away, a lot more when someone's grilling
@@ -152,7 +152,7 @@ function updateEffects(dt, flight) {
   bbq.coals.material.color.setHSL(0.05, 1, 0.45 + Math.sin(S.t * 6) * 0.08 + (grilling ? 0.12 : 0));
   bbq.food.forEach((f, i) => { f.position.y = 0.985 + (grilling ? Math.max(0, Math.sin(S.t * 9 + i * 1.7)) * 0.12 : 0); });
   if (Math.random() < dt * (grilling ? 40 : 6))
-    emitLocal(smokeFx, bbq.x + rand(-.2, .2), 1.1, bbq.z + rand(-.2, .2), rand(-.3, .3), rand(.8, 1.6), flight ? 12 : 0.4, grilling ? 0x999999 : 0xbbbbbb, .35, 1.6, 3, .45);
+    emitLocal(smokeFx, bbq.x + rand(-.2, .2), bbq.y + 1.1, bbq.z + rand(-.2, .2), rand(-.3, .3), rand(.8, 1.6), flight ? 12 : 0.4, grilling ? 0x999999 : 0xbbbbbb, .35, 1.6, 3, .45);
   if (flight && ramp.open > 0.3 && Math.random() < dt * 25)
     emitLocal(smokeFx, rand(-.6, .6), rand(.6, 2.2), rand(-6, 10), 0, 0, 6, 0xffffff, .3, 1.5, 3, .3);
   if (hole.seg && Math.random() < dt * 30) {
@@ -161,10 +161,10 @@ function updateEffects(dt, flight) {
   }
   for (const f of S.faults) if (f.id === 'toilet' && Math.random() < dt * 18) {
     const front = f.side === 'L';
-    emitLocal(smokeFx, front ? rand(-2.8, -0.5) : rand(0.8, 2.8), 0.03, front ? rand(-8.4, -6.8) : rand(8.9, 10.6), rand(-.3, .3), 0, rand(-.3, .3), 0x3399ff, .4, 2, 2, .7);
+    emitLocal(smokeFx, front ? rand(-2.1, -0.4) : rand(0.6, 2.0), 0.03, front ? rand(BULK + 0.2, GALLEY) : rand(CARGO + 0.3, CARGO + 2), rand(-.3, .3), 0, rand(-.3, .3), 0x3399ff, .4, 2, 2, .7);
   }
   const elec = S.faults.some(f => f.id === 'elec');
-  if (elec && Math.random() < dt * 6) for (let i = 0; i < 6; i++) emitLocal(fireFx, rand(-.5, .5), 2.75, -10.7, rand(-2, 2), rand(-3, 0), rand(-2, 2), 0xfff066, .08, .4, 0);
+  if (elec && Math.random() < dt * 6) for (let i = 0; i < 6; i++) emitLocal(fireFx, rand(-.5, .5), ceilAt(CPT.z + 0.2) - 0.35, CPT.z + 0.2, rand(-2, 2), rand(-3, 0), rand(-2, 2), 0xfff066, .08, .4, 0);
   for (const l of cabinLights) l.intensity = elec ? (Math.random() < .3 ? 0.05 : 0.45) : 0.5;
   M.lamp.color.setHex(elec && Math.random() < .3 ? 0x333333 : 0xfff3d6);
   for (const b of beltSigns) b.material = S.seatbelt ? M.yellow : M.dark;
@@ -255,8 +255,8 @@ function update(dt) {
     ld.hinge.rotation.y = ld.swing * ld.open;
   }
   ramp.open += clamp(ramp.target - ramp.open, -dt * 0.45, dt * 0.45);
-  ramp.pivot.rotation.x = ramp.open * RAMP_OPEN;
-  if (!P.falling && !S.driving && P.z > REAR - 0.05 && P.z < REAR + RAMP_RUN + 0.2 && Math.abs(P.x) < RAMP_HW && P.y > GROUND + 0.1 && ramp.open < 0.99 && ramp.target === 0) {
+  ramp.pivot.rotation.x = RAMP_SHUT + ramp.open * (RAMP_OPEN - RAMP_SHUT);
+  if (!P.falling && !S.driving && P.z > REAR - 0.05 && P.z < REAR + RAMP_RUN + 0.2 && Math.abs(P.x) < rampHW(P.z) && P.y > GROUND + 0.1 && ramp.open < 0.99 && ramp.target === 0) {
     if (S.phase === 'airport') { P.z = REAR - 0.3; P.y = 0; }
     else startFalling(0, 6, 'You rode the closing ramp... right off the plane!');
   }
@@ -490,9 +490,11 @@ function startGame() {
 function boardAll() {
   for (const p of passengers) if (p.state !== 'gone' && p.state !== 'seated') {
     if (p.busSeat) { p.busSeat.p = null; p.busSeat = null; }
-    const seat = seats.find(s => !s.occupant); seat.occupant = p; p.seat = seat; p.state = 'seated'; setPose(p, 'sit'); p.x = seat.x; p.z = seat.z;
+    const seat = seats.find(s => !s.occupant);
+    if (!seat) break;
+    seat.occupant = p; p.seat = seat; p.state = 'seated'; setPose(p, 'sit'); p.x = seat.x; p.z = seat.z;
   }
-  items.forEach((it, i) => { if (it.state !== 'gone') { freeSlot(it); it.g.visible = true; it.state = 'free'; it.x = -2.4 + (i % 4) * 0.9; it.z = 7.4 + Math.floor(i / 4) * 1.1; it.y = 0; it.vx = it.vz = it.vy = 0; } });
+  items.forEach((it, i) => { if (it.state !== 'gone') { freeSlot(it); it.g.visible = true; it.state = 'free'; it.x = -1.3 + (i % 5) * 0.65; it.z = 7.0 + Math.floor(i / 5) * 0.7; it.y = 0; it.vx = it.vz = it.vy = 0; } });
   ramp.target = 0;
 }
 window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolleys, bus };
@@ -502,7 +504,7 @@ window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCal
 // terminal, the bus) it slides in closer rather than poking through the walls.
 const _eye = new THREE.Vector3(), _cam = new THREE.Vector3(), BOOM = 3.4;
 function camSpotOK(c) {
-  if (insideHull(P.x, P.z)) return insideHull(c.x, c.z) && c.y > 0.25 && c.y < CY + Math.sqrt(Math.max(0, R * R - c.x * c.x)) - 0.35;
+  if (insideHull(P.x, P.z)) return insideHull(c.x, c.z) && Math.abs(c.x) < hullHW(c.z) - 0.15 && c.y > 0.25 && c.y < ceilAt(c.z) - 0.3;
   if (S.phase === 'airport') {
     if (inTerminal(P.x, P.z)) return inTerminal(c.x, c.z) && c.y > GROUND + 0.3 && c.y < GROUND + 5.4;
     if (vehicleZoneAt(bus, P.x, P.z)) { const l = vehLocal(bus, c.x, c.z); return Math.abs(l.x) < 1.15 && Math.abs(l.z) < 4.0 && c.y > VFLOOR + 0.3 && c.y < VFLOOR + 2.4; }

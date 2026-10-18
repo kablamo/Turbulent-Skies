@@ -251,7 +251,7 @@ function playerPose(who) {
     air: who.isLocal ? !!P.launched : !!who.air, held: !!who.held,
     rg: who.isLocal ? ragFlat(ME && ME.rag) : who.rg || null };
   if (v) { const e = vehPoint(v, v.eye.x, v.eye.z); return { x: e.x, y: v.floor, z: e.z, yaw: v.h, seat: !v.push, push: !!v.push, ...extra }; }
-  if (flying) return { x: -0.75, y: 0, z: -10.75, yaw: 0, seat: true, ...extra };
+  if (flying) return { x: CPT.x, y: 0, z: CPT.z + 0.15, yaw: 0, seat: true, ...extra };
   const yaw = who.carriedBy ? bodyYaw(who.carriedBy) : bodyYaw(who);
   // sitting in a vehicle seat (your own y is lowered for the camera; report the floor)
   if (who.isLocal && P.sitV) return { x: P.x, y: P.sitV.floor, z: P.z, yaw, seat: true, ...extra };

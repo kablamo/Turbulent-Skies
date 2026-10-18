@@ -2,17 +2,17 @@
 'use strict';
 // Inside the hull you can only stand on walkable floor; the walls can only be crossed through
 // an open exit door, an open cargo ramp, or a hole ripped in the side.
+// (the nose and tail narrow, so on top of these you also have to keep clear of the walls: see walkable)
 const ROOMS = [
-  [-1.4, 1.4, NOSE + 0.4, BULK - 0.2],           // cockpit
+  [-1.6, 1.6, NOSE + 0.6, BULK - 0.2],           // cockpit
   [-0.5, 0.5, BULK - 0.4, BULK + 0.4],           // cockpit door
-  [-1.15, 2.75, BULK + 0.2, -6.4],               // front galley
-  [-2.95, -1.4, BULK + 0.25, -6.72],             // front lavatory
-  [-(W - 0.35), W - 0.35, -6.5, CARGO + 0.2],    // cabin
+  [-0.8, W - 0.5, BULK + 0.2, GALLEY + 0.4],     // front galley
+  [-(W - 0.35), -1.1, BULK + 0.25, GALLEY - 0.22],   // front lavatory
+  [-(W - 0.35), W - 0.35, GALLEY + 0.3, CARGO + 0.2],    // cabin
   [-(W - 0.2), W - 0.2, -1.0, 1.0],              // exit row
-  [-(W - 0.5), 1.1, CARGO, REAR + 0.01],         // cargo bay (left of the rear lav)
-  [1.1, W - 0.5, CARGO, 8.75],                   // cargo bay (in front of the rear lav)
-  [1.1, W - 0.5, 10.85, REAR + 0.01],            // cargo bay (behind the rear lav)
-  [1.4, 2.95, 8.97, 10.63],                      // rear lavatory
+  [-(W - 0.35), 0.85, CARGO, REAR + 0.01],       // cargo bay (left of the rear lav)
+  [0.85, W - 0.35, CARGO + 2.1, REAR + 0.01],    // cargo bay (behind the rear lav)
+  [1.1, W - 0.6, CARGO + 0.37, CARGO + 1.88],    // rear lavatory
 ];
 const inSeat = (x, z) => seats.some(s => Math.abs(x - s.x) < 0.34 && z > s.z - 0.32 && z < s.z + 0.38);
 function sideOpen(x, z) {
@@ -25,18 +25,20 @@ function inLavDoorway(x, z) {
   for (const k in lavDoors) { const d = lavDoors[k]; if (d.open > 0.9 && Math.abs(x - d.x) < 0.3 && z > d.z0 + 0.05 && z < d.z1 - 0.05) return true; }
   return false;
 }
-const walkable = (x, z) => (ROOMS.some(r => x >= r[0] && x <= r[1] && z >= r[2] && z <= r[3]) && !inSeat(x, z)) || inThreshold(x, z) || inLavDoorway(x, z);
-const insideHull = (x, z) => Math.abs(x) < W && z > NOSE - 3.5 && z < REAR;
+const walkable = (x, z) => (ROOMS.some(r => x >= r[0] && x <= r[1] && z >= r[2] && z <= r[3]) && Math.abs(x) <= hullHW(z) - 0.3 && !inSeat(x, z)) || inThreshold(x, z) || inLavDoorway(x, z);
+const inHullX = (x, z) => Math.abs(x) < hullHW(z) + 0.06;
+const insideHull = (x, z) => z > NOSE - 2.4 && z < REAR && inHullX(x, z);
 function onWing(x, z) {
   const ax = Math.abs(x), max = wings[x < 0 ? 'L' : 'R'].attached ? WING_OUT : WING_IN;
   return ax >= ROOT && ax <= max && z >= le(ax) && z <= te(ax);
 }
-const inEngine = (x, z) => { const ax = Math.abs(x); return ax > ENG_X - 0.75 && ax < ENG_X + 0.75 && z > -1.0 && z < 2.4; };
-const onRamp = (x, z) => ramp.open > 0.99 && Math.abs(x) < RAMP_HW && z >= REAR - 0.1 && z <= REAR + RAMP_RUN;
+const inEngine = (x, z) => { const ax = Math.abs(x); return ax > ENG_X - ENG_R * 0.85 && ax < ENG_X + ENG_R * 0.85 && z > ENG_Z0 && z < ENG_Z1; };
+const onRamp = (x, z) => ramp.open > 0.99 && Math.abs(x) < rampHW(z) && z >= REAR - 0.1 && z <= REAR + RAMP_RUN;
 // floor height outside the hull (thresholds, wings, ramp, tarmac), or null over thin air
 function surfaceY(x, z) {
   if (inEngine(x, z)) return null;
-  if (inThreshold(x, z) || onWing(x, z)) return 0;
+  if (inThreshold(x, z)) return 0;
+  if (onWing(x, z)) return wingY(x, z);
   if (onRamp(x, z)) return -Math.max(0, z - REAR) * RAMP_SLOPE;
   if (S.phase === 'airport' && inAirport(x, z)) {
     for (const v of vehicles) { const zone = vehicleZoneAt(v, x, z); if (zone) return zone[4] === 'bed' ? v.bedTop : v.floor; }
@@ -63,8 +65,8 @@ const groundAt = (x, z) => insideHull(x, z) ? 0 : surfaceY(x, z);
 function canGo(ax, az, y, bx, bz) {
   const aIn = insideHull(ax, az), bIn = insideHull(bx, bz);
   if (aIn !== bIn) {
-    if ((Math.abs(ax) < W) !== (Math.abs(bx) < W)) { if (!sideOpen(bx, (az + bz) / 2)) return false; }
-    else if ((az < REAR) !== (bz < REAR)) { if (!(ramp.open > 0.99 && Math.abs(bx) < RAMP_HW)) return false; }
+    if (inHullX(ax, az) !== inHullX(bx, bz)) { if (!sideOpen(bx, (az + bz) / 2)) return false; }
+    else if ((az < REAR) !== (bz < REAR)) { if (!(ramp.open > 0.99 && Math.abs(bx) < rampHW(bz))) return false; }
     else return false;
   }
   if (bIn) return walkable(bx, bz) && y > -0.6;
@@ -119,12 +121,12 @@ function areaName(x, z) {
   if (S.driving) return (S.driving.push ? 'Pushing the ' : 'Driving the ') + S.driving.name;
   if (S.phase === 'airport') for (const v of vehicles) if (vehicleZoneAt(v, x, z)) return 'Inside the ' + v.name;
   if (S.phase === 'airport' && !insideHull(x, z) && !onWing(x, z) && !onRamp(x, z)) return inTerminal(x, z) ? 'Terminal · Gate 404' : 'Airport apron';
-  if (Math.abs(x) > W) return x < 0 ? 'Left wing' : 'Right wing';
+  if (Math.abs(x) > HULL_X) return x < 0 ? 'Left wing' : 'Right wing';
   if (z < BULK) return S.flying ? 'Cockpit · flying' : 'Cockpit';
-  if (x < -1.3 && z < -6.6) return 'Front lavatory';
-  if (z < -6.5) return 'Front galley';
+  if (x < -0.95 && z < GALLEY - 0.1) return 'Front lavatory';
+  if (z < GALLEY + 0.3) return 'Front galley';
   if (z > REAR) return 'Cargo ramp';
-  if (x > 1.3 && z > 8.85 && z < 10.75) return 'Rear lavatory';
+  if (x > 0.95 && z > CARGO + 0.25 && z < CARGO + 2) return 'Rear lavatory';
   if (z > CARGO) return 'Cargo bay';
   if (Math.abs(z) < 1.2) return 'Exit row';
   const s = seats.reduce((a, b) => Math.abs(b.z - z) < Math.abs(a.z - z) ? b : a);
@@ -133,7 +135,7 @@ function areaName(x, z) {
 
 // ---------------------------------------------------------------- the player
 function respawn() {
-  Object.assign(P, { x: 0, y: 0, z: -7.4, vy: 0, vz: 0, vx: 0, yaw: Math.PI, pitch: 0, falling: false, launched: false, lvx: 0, lvz: 0 });
+  Object.assign(P, { x: 0, y: 0, z: GALLEY - 0.6, vy: 0, vz: 0, vx: 0, yaw: Math.PI, pitch: 0, falling: false, launched: false, lvx: 0, lvz: 0 });
   if (isClient()) { netSend({ t: 'fell' }); return; }   // the host applies the penalty
   S.integrity -= 3; S.needs.calm -= 15; S.falls++;
   say(pick(['You fell off the plane! Luckily you packed a parachute... and a grappling hook.', 'You fell off! A passing seagull carried you back. Passengers are rattled.', 'Somehow you climbed back in through the landing gear. The passengers saw everything.']), 'bad');
@@ -153,7 +155,7 @@ function updatePlayer(dt) {
     if (P.fallT > 2.3) { respawn(); $('fade').style.opacity = 0; }
     return;
   }
-  if (S.flying) { P.x = -0.75; P.z = -10.6; P.y = 0; return; }
+  if (S.flying) { P.x = CPT.x; P.z = CPT.z + 0.3; P.y = 0; return; }
   if (S.driving) { const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z); P.x = e.x; P.z = e.z; P.y = v.floor; return; }
   // sitting in a vehicle seat: you go where the seat goes
   if (P.sitV) { const pt = vehPoint(P.sitV, P.sitSeat.x, P.sitSeat.z); P.x = pt.x; P.z = pt.z; P.y = P.sitV.floor - 0.45; P.vy = 0; return; }
@@ -264,7 +266,7 @@ function updatePlayer(dt) {
 
   // propeller wash knocks you right off the wing
   const ax = Math.abs(P.x), e = engines[P.x < 0 ? 'L' : 'R'];
-  if (S.phase !== 'airport' && onWing(P.x, P.z) && ax > ENG_X - 1.4 && ax < ENG_X + 1.4 && P.z < -0.9 && e.spin > 8) {
+  if (S.phase !== 'airport' && onWing(P.x, P.z) && ax > ENG_X - 2.3 && ax < ENG_X + 2.3 && P.z < ENG_Z1 + 0.3 && e.spin > 8) {
     startFalling(Math.sign(P.x) * 6, 8, 'The propeller blast blew you clean off the wing!');
     return;
   }

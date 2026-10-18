@@ -288,6 +288,7 @@ function fitTrolley(v, scene) {
 
 // (started once every script has run, since a quick download could otherwise land before net.js exists)
 if (THREE.GLTFLoader && THREE.SkeletonUtils) window.addEventListener('DOMContentLoaded', () => {
+  loadGLB('models/plane.glb').then(s => { try { dressPlane(s); } catch (e) { console.warn('Plane model failed:', e); dressPlane(null); } });
   loadGLB(TROLLEY.url).then(s => { if (s) try { prepareTrolley(s); } catch (e) { console.warn('Trolley model failed:', e); } });
   loadGLB('models/luggage.glb').then(s => { if (s) try { prepareLuggage(s); } catch (e) { console.warn('Luggage models failed:', e); } });
   Promise.all([MODEL.url, 'models/hair.glb', 'models/backpack.glb'].map(loadGLB)).then(([scene, hair, pack]) => {
@@ -307,3 +308,4 @@ if (THREE.GLTFLoader && THREE.SkeletonUtils) window.addEventListener('DOMContent
     } catch (e) { console.warn('Custom passenger model failed, using the built-in people:', e); }
   });
 });
+else window.addEventListener('DOMContentLoaded', () => dressPlane(null));

@@ -196,7 +196,7 @@ function autoLoad() {
   if (need <= 0) return say(people ? `🤖 AUTO LOAD: ${people} passenger${people > 1 ? 's' : ''} flying to their seats! (The bags are all aboard already.)` : '🧳 The bags and passengers are all aboard already!', 'good');
   // free spots on the cargo bay floor
   const spots = [];
-  for (const z of [8.0, 9.3, 10.6]) for (const x of [-2.2, -1.1, 0, 1.1, 2.2]) if (!items.some(i => i.state !== 'gone' && Math.hypot(i.x - x, i.z - z) < 0.5)) spots.push([x, z]);
+  for (const z of [7.4, 8.4, 9.4, 10.4]) for (const x of [-1.3, -0.45, 0.45, 1.3]) if (!items.some(i => i.state !== 'gone' && Math.hypot(i.x - x, i.z - z) < 0.5)) spots.push([x, z]);
   const pc = { x: BELT_X - 1.6, z: BELT_END - 2.2 };
   const pool = items.filter(i => !i.extra && !i.type.cage && i.type !== BAGS.nuke && !i.type.floaty && ['pile', 'free', 'ride'].includes(i.state) && !insideHull(i.x, i.z))
     .sort((a, b) => Math.hypot(a.x - pc.x, a.z - pc.z) - Math.hypot(b.x - pc.x, b.z - pc.z));

@@ -160,7 +160,7 @@ function interact(dt) {
   }
   if (S.flying) {
     if (S.press && isClient()) netSend({ t: 'stand' });
-    else if (S.press) { S.flying = false; S.chase = false; P.z = -10.0; P.yaw = Math.PI; say(inAir() ? 'Autopilot holding course.' : 'Autopilot is handling the takeoff.'); }
+    else if (S.press) { S.flying = false; S.chase = false; P.z = CPT.z + 0.9; P.yaw = Math.PI; say(inAir() ? 'Autopilot holding course.' : 'Autopilot is handling the takeoff.'); }
     S.press = S.drop = S.act = false;
     if (S.phase === 'takeoff' && !S.liftoff) setPrompt(S.toSpeed > 0.75 ? '<kbd>Hold W</kbd> PULL UP!' : `Speed ${Math.round(S.toSpeed * 160)} km/h… keep it straight`, S.toSpeed <= 0.75);
     else if (S.phase === 'landing') setPrompt(S.touched ? 'Braking…' : '<kbd>A</kbd><kbd>D</kbd> line up with the runway', true);

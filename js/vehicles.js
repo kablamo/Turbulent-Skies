@@ -128,7 +128,8 @@ function updateVehicles(dt) {
 const nearRamp = (x, z, d) => Math.hypot(x - RAMP_FOOT.x, z - RAMP_FOOT.z) < d;
 function vehicleSpotOK(x, z) {
   if (!inAirport(x, z) || airportBlocked(x, z)) return false;
-  if (Math.abs(x) < W + 0.6 && z > NOSE - 4 && z < REAR + RAMP_RUN + 0.3) return false;   // the fuselage and ramp
+  if (Math.abs(x) < HULL_X + 0.6 && z > NOSE - 3.5 && z < REAR + RAMP_RUN + 0.3) return false;   // the fuselage and ramp
+  if (Math.abs(Math.abs(x) - ENG_X) < ENG_R + 0.5 && z > ENG_Z0 - 1 && z < ENG_Z1 + 0.5) return false;   // the engines hang low
   if (Math.abs(x) > ROOT - 0.2 && Math.abs(x) < WING_OUT + 0.5 && z > le(Math.abs(x)) - 0.5 && z < te(Math.abs(x)) + 0.5) return false;
   return true;
 }
