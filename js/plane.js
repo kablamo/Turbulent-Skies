@@ -381,20 +381,35 @@ const PC = {
 const toGame = new THREE.Matrix4().makeTranslation(0, PLANE_LIFT * PLANE_SCALE, PLANE_SHIFT).multiply(new THREE.Matrix4().makeScale(PLANE_SCALE, PLANE_SCALE, -PLANE_SCALE));
 const RAMP_Z1 = REAR + RAMP_LEN * Math.cos(Math.PI / 2 - RAMP_SHUT);
 
-// cut every triangle that crosses the plane <axis> = v into pieces that don't (keeping which way they face)
-function splitTris(tris, axis, v, only) {
-  const out = [];
+// cut every triangle that crosses any of the planes <axis> = v (for each v in vs) into pieces that don't,
+// keeping which way they face. Each triangle is sliced into slabs in one go, so long thin ones don't multiply.
+function splitTris(tris, axis, vs, only) {
+  const out = [], k = 'xyz'[axis], E = 1e-6, cuts = (Array.isArray(vs) ? [...vs] : [vs]).sort((a, b) => a - b);
+  const cutAt = (p, q, v) => {
+    const f = (v - p[k]) / (q[k] - p[k]), m = p.clone().lerp(q, f);
+    if (p.nrm && q.nrm) m.nrm = p.nrm.clone().lerp(q.nrm, f).normalize();
+    return m;
+  };
+  const fan = P => { for (let i = 1; i + 1 < P.length; i++) out.push([P[0], P[i], P[i + 1]]); };
   for (const t of tris) {
-    const d = t.map(p => p.getComponent(axis) - v);
-    if ((only && !only(t)) || d.every(x => x >= -1e-6) || d.every(x => x <= 1e-6)) { out.push(t); continue; }
-    const A = [], B = [];
-    for (let i = 0; i < 3; i++) {
-      const p = t[i], q = t[(i + 1) % 3], dp = d[i], dq = d[(i + 1) % 3];
-      if (dp >= 0) A.push(p);
-      if (dp <= 0) B.push(p);
-      if ((dp > 0 && dq < 0) || (dp < 0 && dq > 0)) { const m = p.clone().lerp(q, dp / (dp - dq)); A.push(m); B.push(m); }
+    const lo = Math.min(t[0][k], t[1][k], t[2][k]), hi = Math.max(t[0][k], t[1][k], t[2][k]);
+    const mine = cuts.filter(v => v > lo + E && v < hi - E);
+    if (!mine.length || (only && !only(t))) { out.push(t); continue; }
+    let P = [t[0], t[1], t[2]];
+    for (const v of mine) {
+      // the part below this plane is done; carry on slicing the part above it
+      const below = [], above = [];
+      for (let i = 0; i < P.length; i++) {
+        const p = P[i], q = P[(i + 1) % P.length], dp = p[k] - v, dq = q[k] - v;
+        if (dp <= 0) below.push(p);
+        if (dp >= 0) above.push(p);
+        if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) { const m = cutAt(p, q, v); below.push(m); above.push(m); }
+      }
+      if (below.length > 2) fan(below);
+      P = above;
+      if (P.length < 3) break;
     }
-    for (const P of [A, B]) for (let i = 1; i + 1 < P.length; i++) out.push([P[0], P[i], P[i + 1]]);
+    if (P.length > 2) fan(P);
   }
   return out;
 }
@@ -404,19 +419,20 @@ const triInfo = t => {
   return t;
 };
 function triMesh(list, mat, colorOf) {
-  const pos = new Float32Array(list.length * 9), col = new Float32Array(list.length * 9);
-  list.forEach((t, i) => {
+  const n = list.length * 9, pos = new Float32Array(n), col = new Float32Array(n), nor = list[0] && list[0].vn ? new Float32Array(n) : null;
+  let o = 0;
+  for (const t of list) {
     const c = colorOf(t);
-    for (let k = 0; k < 3; k++) { pos.set([t[k].x, t[k].y, t[k].z], i * 9 + k * 3); col.set([c.r, c.g, c.b], i * 9 + k * 3); }
-  });
+    for (let k = 0; k < 3; k++, o += 3) {
+      const v = t[k]; pos[o] = v.x; pos[o + 1] = v.y; pos[o + 2] = v.z;
+      col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
+      if (nor) { const m = t.vn[k]; nor[o] = m.x; nor[o + 1] = m.y; nor[o + 2] = m.z; }
+    }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  if (list[0] && list[0].vn) {
-    const nor = new Float32Array(list.length * 9);
-    list.forEach((t, i) => { for (let k = 0; k < 3; k++) nor.set([t.vn[k].x, t.vn[k].y, t.vn[k].z], i * 9 + k * 3); });
-    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  } else g.computeVertexNormals();
+  if (nor) g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); else g.computeVertexNormals();
   return new THREE.Mesh(g, mat);
 }
 // make sure every bit of the fuselage's skin faces out (a flipped face would show its paint inside the cabin):
@@ -429,7 +445,7 @@ function faceOutwards(tris) {
     if (!isBody(t)) continue;
     const e = sum.get(bin(t.c.z)), cy = e[0] / e[1];
     const out = new THREE.Vector3(t.c.x, t.c.y - cy, 0);
-    if (out.lengthSq() > 0.01 && t.n.dot(out) < 0) { [t[1], t[2]] = [t[2], t[1]]; t.n.negate(); }
+    if (out.lengthSq() > 0.01 && t.n.dot(out) < 0) { [t[1], t[2]] = [t[2], t[1]]; t.n.negate(); t.flip = true; }
   }
 }
 // smooth shading across gently curving skin, but crisp edges where it folds sharply (wing edges, fin tips)
@@ -438,6 +454,12 @@ function smoothNormals(tris) {
   for (const t of tris) {
     const area = new THREE.Vector3().subVectors(t[1], t[0]).cross(new THREE.Vector3().subVectors(t[2], t[0])).length();
     for (const v of t) { const k = key(v); if (!at.has(k)) at.set(k, []); at.get(k).push([t.n, area]); }
+  }
+  if (tris.filter(t => t[0].nrm).length > tris.length / 2) {
+    // the model brought its own normals: use those (turned round along with any face that was)
+    // (and any normal pointing the opposite way to its face, from a muddled bit of the model, is turned round too)
+    for (const t of tris) t.vn = t.map(v => !v.nrm ? t.n : v.nrm.dot(t.n) < 0 ? v.nrm.clone().negate() : v.nrm);
+    return;
   }
   for (const t of tris) t.vn = t.map(v => {
     const n = new THREE.Vector3();
@@ -485,27 +507,37 @@ function dressPlane(scene) {
       if (!o.isMesh) return;
       const m = new THREE.Matrix4().multiplyMatrices(toGame, o.matrixWorld);
       if (o.name !== 'Cube') { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); engineParts.push({ o, m }); return; }   // (Cube.001 and on are propeller blades)
-      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry, pos = g.attributes.position;
+      // (read corner by corner: toNonIndexed() garbles interleaved files)
+      const g = o.geometry, pos = g.attributes.position, nor = g.attributes.normal, idx = g.index, n = idx ? idx.count : pos.count;
+      const nm = new THREE.Matrix3().getNormalMatrix(m);
       let body = [];
-      for (let i = 0; i < pos.count; i += 3) body.push([0, 1, 2].map(k => new THREE.Vector3().fromBufferAttribute(pos, i + k).applyMatrix4(m)));
+      // (the model's own smooth normals come along, so the curves shade smoothly)
+      for (let i = 0; i < n; i += 3) body.push([0, 1, 2].map(k => {
+        const j = idx ? idx.getX(i + k) : i + k, v = new THREE.Vector3().fromBufferAttribute(pos, j).applyMatrix4(m);
+        if (nor) { v.nrm = new THREE.Vector3().fromBufferAttribute(nor, j).applyMatrix3(nm); v.nrm.lengthSq() > 1e-12 ? v.nrm.normalize() : (v.nrm = null); }
+        return v;
+      }));
       body.forEach(t => t.reverse());                                  // (the turn-round flipped which way it faced)
-      // only half a plane (the body cut down the middle)? then the other half is its mirror image
-      if (Math.min(...body.map(t => Math.min(t[0].x, t[1].x, t[2].x))) > -1) {
-        body = splitTris(body, 0, 0).filter(t => triInfo(t).c.x > 1e-4 && !(Math.abs(t.c.x) < 0.02 && Math.abs(t.n.x) > 0.9));
-        for (const t of [...body]) body.push([t[2], t[1], t[0]].map(p => new THREE.Vector3(-p.x, p.y, p.z)));
-      }
+      // keep the right half and mirror it for the left, so both sides match exactly (and a half-plane file works too)
+      body = splitTris(body, 0, 0).filter(t => triInfo(t).c.x > 1e-4 && !(Math.abs(t.c.x) < 0.02 && Math.abs(t.n.x) > 0.9));
+      for (const t of [...body]) body.push([t[2], t[1], t[0]].map(p => { const v = new THREE.Vector3(-p.x, p.y, p.z); if (p.nrm) v.nrm = new THREE.Vector3(-p.nrm.x, p.nrm.y, p.nrm.z); return v; }));
       tris.push(...body);
     });
   }
   if (!tris.length) tris = boxyPlaneTris();
   // cut along every line where the skin gets split up or painted
   const side = t => Math.abs(t[0].x) > HULL_X - 0.3 || Math.abs(t[1].x) > HULL_X - 0.3 || Math.abs(t[2].x) > HULL_X - 0.3;
-  for (const z of [-9.3, -6.3, -1.2, 1.2, REAR, RAMP_Z1, ...segments.flatMap(sg => [sg.z0, sg.z1])]) tris = splitTris(tris, 2, z);
-  for (const sg of segments) for (const d of [-1, 1]) tris = splitTris(tris, 2, sg.z + d * WIN.w / 2, side);
-  for (const y of [WIN.y - WIN.h / 2, WIN.y + WIN.h / 2]) tris = splitTris(tris, 1, y, side);
-  tris = splitTris(splitTris(tris, 1, 1.5, t => t[0].z < -6), 1, 2.6, t => t[0].z < -6);
-  for (const y of [SEG_Y0, 2.3, SEG_Y1, 2.15, 2.45, 2.55, 2.65]) tris = splitTris(tris, 1, y, side);
-  for (const s of [-1, 1]) tris = splitTris(tris, 0, s * WING_IN);
+  const bodyTri = t => Math.abs(t[0].x) < HULL_X + 0.3 || Math.abs(t[1].x) < HULL_X + 0.3 || Math.abs(t[2].x) < HULL_X + 0.3;
+  tris = splitTris(tris, 2, [-9.3, -6.3, -1.2, 1.2, REAR, RAMP_Z1, ...new Set(segments.flatMap(sg => [sg.z0, sg.z1]))], bodyTri);
+  tris = splitTris(tris, 2, segments.flatMap(sg => [sg.z - WIN.w / 2, sg.z + WIN.w / 2]), side);
+  tris = splitTris(tris, 1, [WIN.y - WIN.h / 2, WIN.y + WIN.h / 2], side);
+  tris = splitTris(tris, 1, [1.5, 2.6], t => t[0].z < -6);
+  tris = splitTris(tris, 1, [SEG_Y0, 2.3, SEG_Y1], side);
+  // clean straight edges for the paint: the stripes along the sides and the grey belly
+  const flankTri = t => t.some(v => Math.abs(v.x) > 0.6 && Math.abs(v.x) < HULL_X + 0.2) && t[0].z > -8.5 && t[0].z < 14.5;
+  tris = splitTris(tris, 1, [2.15, 2.45, 2.55, 2.65], flankTri);
+  tris = splitTris(tris, 1, -0.7, t => t.some(v => Math.abs(v.x) < HULL_X + 0.2));
+  tris = splitTris(tris, 0, [-WING_IN, WING_IN]);
   tris.forEach(triInfo);
   faceOutwards(tris);
   smoothNormals(tris);
@@ -527,7 +559,7 @@ function dressPlane(scene) {
     const c = t.c, n = t.n, ax = Math.abs(c.x);
     if (!body(t)) return ax > 7.6 && c.z > 18 ? PC.blue : PC.wing;              // wings, tailplane, tail fins
     if (c.y < -0.7) return PC.belly;
-    const flank = Math.abs(n.x) > 0.8 && c.z > -8 && c.z < 14;
+    const flank = Math.abs(n.x) > 0.6 && n.y > -0.5 && c.z > -8 && c.z < 14;
     if (flank && c.y > 2.15 && c.y < 2.45) return PC.blue;        // the stripes down each side
     if (flank && c.y > 2.55 && c.y < 2.65) return PC.red;
     return PC.white;
