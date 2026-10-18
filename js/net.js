@@ -407,7 +407,7 @@ function applySnap(m) {
       else if (e[0] === 'whack') { quack(); burstConfetti(e[1], e[2], e[3], 12); }
       else if (e[0] === 'eject' && passengers[e[1]].state !== 'gone') ejectPassenger(passengers[e[1]]);
       else if (e[0] === 'lost' && items[e[1]].state !== 'gone') { const it = items[e[1]]; overboard(it); toDebris(it.g, new THREE.Vector3(rand(-2, 2), -2, 25)); }
-      else if (e[0] === 'over') { NET.quiet = false; showGameOver(e[1]); }
+      else if (e[0] === 'over') { NET.quiet = false; showGameOver(e[1].html ?? e[1], e[1].end); }
     } finally { NET.quiet = false; }
   }
 }

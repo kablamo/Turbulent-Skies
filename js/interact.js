@@ -35,6 +35,19 @@ function takeOff(who = LOCAL) {
   say('Throttle up! Hold W to pull up once you have enough speed.', 'good');
 }
 
+// the first thing along a ray that does something. A bag (or a person) just in front of a control doesn't hide
+// it: a job like the toolbox or the ramp controls, up to a metre behind, wins over grabbing whatever's in the way
+function firstAction(hits) {
+  let grab = null;
+  for (const h of hits) {
+    const a = actionFor(h.object.userData);
+    if (!a) continue;
+    if (a.type === 'grab' || a.type === 'info') { if (!grab) grab = [a, h.object.userData, h.distance]; continue; }
+    if (grab && h.distance - grab[2] > 1) break;
+    return [a, h.object.userData];
+  }
+  return grab ? [grab[0], grab[1]] : [null, null];
+}
 // what pressing E does on whatever the crosshair is over (null = nothing, look past it)
 function actionFor(ud, who = LOCAL) {
   // (held down for a moment, and only when you're aiming right at it, so nobody sets it off by accident)
@@ -210,10 +223,10 @@ function interact(dt) {
   // right in front of you, like a button, aren't skipped by a camera ray passing over them)…
   if (third && !P.falling) {
     raycaster.set(_eyeW, camera.getWorldDirection(new THREE.Vector3())); raycaster.far = 2.6;
-    for (const h of raycaster.intersectObjects(targets, false)) { const a = actionFor(h.object.userData); if (a) { act = a; ref = h.object.userData; break; } }
+    [act, ref] = firstAction(raycaster.intersectObjects(targets, false));
   }
   // …then whatever the crosshair is on
-  if (!act) for (const h of hits) { act = actionFor(h.object.userData); if (act) { ref = h.object.userData; break; } }
+  if (!act) [act, ref] = firstAction(hits);
   const decide = () => { if (rDown && !GRAB.mode) { GRAB.mode = act && act.ready && act.type !== 'grab' && act.type !== 'info' ? 'act' : 'grab'; if (GRAB.mode === 'act') S.press = true; } };
   // third person: if the crosshair isn't on anything, try what's just in front of your character
   if (third && !act && !P.falling) {
@@ -358,6 +371,7 @@ function updateFPArms(dt) {
 // keyDown/keyUp are shared by the keyboard and the touch buttons
 function keyDown(k, repeat) {
   if (CUT.on) { if (!repeat && [' ', 'enter', 'escape', 'e'].includes(k)) skipCutscene(); return; }   // the intro cutscene
+  if (END.on) { if (!repeat && [' ', 'enter', 'escape', 'e'].includes(k)) finishEnding(); return; }   // the ending cutscene
   keys[k] = true;
   if (repeat) return;
   if (k === 'enter' && S.running && !S.over && S.paused) resume();
@@ -382,6 +396,7 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDow
 const locked = () => document.pointerLockElement === canvas;
 const lock = () => { if (TOUCH) return; try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
 canvas.addEventListener('mousedown', e => {
+  if (END.on) return finishEnding();
   if (!S.running || S.over || TOUCH) return;
   if (CUT.on) { skipCutscene(); if (!locked()) lock(); return; }
   if (!locked()) { lock(); return; }

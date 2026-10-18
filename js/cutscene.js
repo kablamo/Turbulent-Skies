@@ -119,3 +119,152 @@ function updateCutscene(dt) {
     chime();
   }
 }
+
+// ---------------------------------------------------------------- the ending cutscenes
+// After the last landing or the last disaster, before the score: a short film of how it went.
+//   crash: the plane shudders and smokes, noses over into a spinning dive, and hits the sea (or the runway) in
+//          a fireball; then a title card.
+//   survive: the camera circles the plane at Gate 808, the cargo ramp drops, fireworks; then a title card.
+// It plays on everyone's screen (from the host's 'over' event). Space / click / tap skips to the score.
+const END = { on: false };
+const cutFlash = document.createElement('div');
+cutFlash.style.cssText = 'position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none';
+cutUI.appendChild(cutFlash);
+const CRASH_LINES = {
+  apart: ['Flight 404 is shedding parts faster than it can lose them.', 'The plane is now more of a suggestion than a plane.', 'Somewhere, a bolt lets go. Then all the other bolts.'],
+  empty: ['With nobody left on board, Flight 404 loses the will to fly.', 'An empty plane. A lonely captain. A very long way down.', 'The last passenger waves from their parachute.'],
+  mutiny: ['The passengers have taken over. Nobody knows how to fly.', 'From inside the lavatory, the captain hears the engines stop.', '"Does anyone know what this button does?"'],
+};
+const IMPACT_LINES = ['The airline would like to remind you that this was a simulation.', 'Flight 404 has arrived. Just not at Gate 808.', 'Good news: the barbecue survived.', 'The black box only recorded screaming. And a duck.'];
+const LAND_LINES = { smooth: ['Butter. Smooth. Landing.', 'Not a single cup of coffee spilled.'], bumpy: ['A bit bumpy, but everyone\'s still in one piece.', 'The wheels are fine. Mostly.'], off: ['Technically, the grass counts as a runway.', 'The airport would like its fence back.'] };
+const CHEER_LINES = ['The passengers applaud. A few of them are crying.', 'Somebody kisses the tarmac. Then the pilot.', 'Gary the duck approves.', 'The crocodile leaves a five-star review.'];
+
+function playEnding(end, done) {
+  if (END.on) return;
+  plane.updateMatrixWorld(true);
+  scene.attach(camera);                                    // (the camera stays put while the plane goes)
+  Object.assign(END, { on: true, t: 0, end, done, shown: -1, boom: false, next: 0, debris: [], ramp0: ramp.pivot.rotation.x,
+    p0: plane.position.clone(), r0: plane.rotation.clone(), cam0: camera.position.clone() });
+  CUT.on = false; gull.visible = false;
+  $('hud').style.display = 'none'; $('overlay').style.display = 'none';
+  cutUI.style.display = 'block'; $('cutTitle').style.opacity = 0; $('cutCap').classList.remove('in');
+  camera.fov = 60; camera.updateProjectionMatrix();
+  if (!end.won) {
+    // where it comes down: the destination's runway if it's in sight, otherwise the sea, not far below
+    if (airport2.visible) END.gy = airport2.position.y + GROUND;
+    else if (airport.visible && airport.position.y + GROUND > END.p0.y - 80) END.gy = airport.position.y + GROUND;
+    else { END.gy = END.p0.y - 70; ocean.position.y = END.gy; ocean.visible = true; END.sea = true; }
+    END.fall = Math.max(6, END.p0.y - END.gy - 2);
+    END.T1 = 1.8; END.T2 = 4.6;
+    END.camA = new THREE.Vector3(END.p0.x + 30, END.p0.y + 6, END.p0.z - 8);
+  }
+}
+function endCaption(text) { const cap = $('cutCap'); cap.textContent = text; cap.classList.remove('in'); void cap.offsetWidth; cap.classList.add('in'); }
+function endTitle(big, ep) {
+  $('cutCap').classList.remove('in');
+  $('cutTitle').innerHTML = `<div class="big">${big}</div><div class="ep">${ep}</div><div class="who">Starring Captain ${NET.name.replace(/[<>&]/g, '')}</div>`;
+  $('cutTitle').style.opacity = 1;
+}
+function finishEnding() {
+  if (!END.on || END.t < 0.4) return;
+  END.on = false;
+  cutUI.style.display = 'none'; $('cutTitle').style.opacity = 0; cutFlash.style.opacity = 0;
+  for (const d of END.debris) scene.remove(d.m);
+  END.done();
+}
+const _e1 = new THREE.Vector3(), _e2 = new THREE.Vector3();
+function updateEnding(dt) {
+  END.t += dt;
+  const t = END.t;
+  cutFlash.style.opacity = Math.max(0, (parseFloat(cutFlash.style.opacity) || 0) - dt * 1.5);
+  if (END.end.won) endSurvive(t, dt); else endCrash(t, dt);
+}
+// --- crash
+function endCrash(t, dt) {
+  const E = END, kind = CRASH_LINES[E.end.kind] ? E.end.kind : 'apart';
+  if (E.shown < 0) { E.shown = 0; endCaption(cutPick(CRASH_LINES[kind])); beep(300, .4, 'sawtooth', .06); setTimeout(() => beep(240, .5, 'sawtooth', .06), 350); }
+  const smoke = (n, fire) => {
+    for (const s of [-1, 1]) for (let i = 0; i < n; i++) {
+      emitLocal(smokeFx, s * ENG_X, ENG_Y + 0.6, ENG_Z, cutRand() * 4 - 2, 2 + cutRand() * 3, 18 + cutRand() * 10, 0x333333, 2, 1.6, 3, 0.7);
+      if (fire) emitLocal(fireFx, s * ENG_X, ENG_Y + 0.6, ENG_Z, cutRand() * 4 - 2, cutRand() * 3, 12 + cutRand() * 8, cutPick([0xffaa22, 0xff5511]), 1.4, 0.5, 2);
+    }
+  };
+  if (t < E.T1) {
+    // trouble: shuddering, smoke pouring from both engines
+    const k = t / E.T1;
+    plane.position.set(E.p0.x + (cutRand() - 0.5) * 0.3 * k, E.p0.y + (cutRand() - 0.5) * 0.3 * k, E.p0.z);
+    plane.rotation.set(E.r0.x, E.r0.y, E.r0.z + Math.sin(t * 9) * 0.06 * k);
+    plane.updateMatrixWorld(true);
+    smoke(1, t > E.T1 * 0.5);
+    camera.position.copy(E.camA);
+  } else if (t < E.T2) {
+    // over she goes: nose down, spinning, faster and faster
+    const u = (t - E.T1) / (E.T2 - E.T1);
+    plane.position.set(E.p0.x + 6 * u, E.p0.y - E.fall * u * u, E.p0.z - 55 * u);
+    plane.rotation.set(E.r0.x - 0.95 * ease(Math.min(1, u * 1.4)), E.r0.y, E.r0.z + 3.2 * u * u);
+    plane.updateMatrixWorld(true);
+    smoke(2, true);
+    if (!E.whistle) { E.whistle = true; sweep(900, 200, E.T2 - E.T1, 'sine', 0.05); }
+    camera.position.lerpVectors(E.camA, _e1.set(E.p0.x + 34, E.gy + 14, E.p0.z - 40), ease(u));
+  } else {
+    if (!E.boom) {
+      // impact
+      E.boom = true; plane.visible = false;
+      const I = E.I = plane.position.clone(); I.y = E.gy + 1;
+      for (let i = 0; i < 160; i++) fireFx.emit(I, _e1.set(cutRand() * 30 - 15, 4 + cutRand() * 22, cutRand() * 30 - 15), cutPick([0xffaa22, 0xff5511, 0xffee88, 0xff3300]), 2 + cutRand() * 3, 0.8 + cutRand() * 1.2, 3);
+      for (let i = 0; i < 120; i++) smokeFx.emit(I, _e1.set(cutRand() * 14 - 7, 3 + cutRand() * 10, cutRand() * 14 - 7), 0x2a2a2a, 3, 3 + cutRand() * 2, 4, 0.85);
+      if (E.sea) for (let i = 0; i < 120; i++) smokeFx.emit(I, _e1.set(cutRand() * 20 - 10, 10 + cutRand() * 22, cutRand() * 20 - 10), 0xeaf6ff, 1.8, 1.6 + cutRand(), 2.5, 0.9);
+      // bits of plane flying everywhere
+      for (let i = 0; i < 22; i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.3 + cutRand() * 1.4, 0.1 + cutRand() * 0.4, 0.3 + cutRand() * 1.6), cutPick([M.white || M.grey, M.grey, M.dark, M.red]));
+        m.position.copy(I); scene.add(m);
+        E.debris.push({ m, v: new THREE.Vector3(cutRand() * 36 - 18, 8 + cutRand() * 24, cutRand() * 36 - 18), s: new THREE.Vector3(cutRand() * 10, cutRand() * 10, cutRand() * 10) });
+      }
+      cutFlash.style.opacity = 1;
+      beep(55, 1.6, 'sawtooth', 0.2); sweep(260, 40, 1.4, 'square', 0.12);
+      setTimeout(() => beep(80, 0.8, 'sawtooth', 0.12), 250);
+      E.camB = camera.position.clone();
+      setTimeout(() => { if (END.on) endCaption(cutPick(IMPACT_LINES)); }, 600);
+    }
+    const a = t - E.T2, I = E.I;
+    // smoke keeps rising; the fire dies down
+    if (cutRand() < Math.max(0.15, 1 - a * 0.25)) smokeFx.emit(I, _e1.set(cutRand() * 4 - 2, 5 + cutRand() * 4, cutRand() * 4 - 2), 0x333333, 3, 3, 4, 0.7);
+    if (cutRand() < Math.max(0, 0.8 - a * 0.2)) fireFx.emit(I, _e1.set(cutRand() * 6 - 3, 2 + cutRand() * 5, cutRand() * 6 - 3), cutPick([0xff7722, 0xffaa22]), 2, 0.7, 2);
+    for (const d of E.debris) {
+      d.v.y -= 18 * dt; d.m.position.addScaledVector(d.v, dt);
+      if (d.m.position.y < E.gy) { d.m.position.y = E.gy; d.v.multiplyScalar(E.sea ? 0 : 0.4); d.v.y = Math.abs(d.v.y) * 0.3; }
+      d.m.rotation.x += d.s.x * dt; d.m.rotation.y += d.s.y * dt; d.m.rotation.z += d.s.z * dt;
+    }
+    // the camera drifts in for a look (with a shake right after the bang)
+    const sh = Math.max(0, 1 - a * 1.5) * 1.2;
+    camera.position.lerpVectors(E.camB, _e1.set(I.x + 22, E.gy + 9, I.z + 26), ease(Math.min(1, a / 4)));
+    camera.position.x += (cutRand() - 0.5) * sh; camera.position.y += (cutRand() - 0.5) * sh;
+    if (a > 2.6 && E.shown < 2) { E.shown = 2; endTitle('💥 THE END', 'Flight 404 never made it to Gate 808'); }
+    if (a > 6) finishEnding();
+  }
+  camera.lookAt(E.boom ? _e2.copy(E.I).setY(E.gy + 3) : plane.position);
+}
+// --- survive
+function endSurvive(t, dt) {
+  const E = END;
+  if (E.shown < 0) { E.shown = 0; endCaption(cutPick(LAND_LINES[E.end.q] || LAND_LINES.bumpy)); chime(); }
+  const c = plane.localToWorld(_e2.set(0, 1, 2));
+  const a = 2.4 + t * 0.21;   // (from in front, round the right-hand side)
+  camera.position.set(c.x + Math.sin(a) * 34, c.y + 5, c.z + Math.cos(a) * 34);
+  camera.lookAt(_e1.set(c.x, c.y + 5, c.z));
+  // the cargo ramp drops
+  if (t > 1) ramp.pivot.rotation.x = E.ramp0 + (RAMP_OPEN - E.ramp0) * ease(Math.min(1, (t - 1) / 2));
+  // fireworks
+  if (t > 1.4 && t > E.next && t < 9) {
+    E.next = t + 0.45 + cutRand() * 0.35;
+    const p = _e1.set(c.x + cutRand() * 44 - 22, c.y + 9 + cutRand() * 9, c.z + cutRand() * 36 - 24), col = cutPick([0xff4466, 0xffd34a, 0x44ddff, 0x66ff66, 0xcc66ff, 0xffffff]);
+    for (let i = 0; i < 55; i++) {
+      const th = cutRand() * Math.PI * 2, ph = Math.acos(cutRand() * 2 - 1), sp = 9 + cutRand() * 4;
+      fireFx.emit(p, _e2.set(Math.sin(ph) * Math.cos(th) * sp, Math.cos(ph) * sp, Math.sin(ph) * Math.sin(th) * sp), col, 1.1, 1.1 + cutRand() * 0.5, 0.5);
+    }
+    beep(120 + cutRand() * 80, 0.25, 'triangle', 0.07); setTimeout(() => beep(1400 + cutRand() * 600, 0.05, 'square', 0.03), 90);
+  }
+  if (t > 3.3 && E.shown < 1) { E.shown = 1; endCaption(cutPick(CHEER_LINES)); }
+  if (t > 6.4 && E.shown < 2) { E.shown = 2; endTitle('🛬 YOU SURVIVED!', 'Flight 404 has landed at Gate 808'); chime(); }
+  if (t > 10.5) finishEnding();
+}

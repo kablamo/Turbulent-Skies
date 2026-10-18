@@ -321,9 +321,9 @@ function update(dt) {
   if (flight && H) {
     const aboard = updatePassengerNeeds(dt, dead, openings);
     const hap = happiness();
-    if (S.integrity <= 0) return gameOver(false, 'The plane fell apart around you. 🧩✈');
-    if (!aboard) return gameOver(false, 'There are no passengers left on the plane. The airline has questions. 🪂');
-    if (hap < 5) { S.lowHapT += dt; if (S.lowHapT > 2) return gameOver(false, 'The passengers mutinied and locked you in the lavatory. 😡'); } else S.lowHapT = 0;
+    if (S.integrity <= 0) return gameOver(false, 'The plane fell apart around you. 🧩✈', 'apart');
+    if (!aboard) return gameOver(false, 'There are no passengers left on the plane. The airline has questions. 🪂', 'empty');
+    if (hap < 5) { S.lowHapT += dt; if (S.lowHapT > 2) return gameOver(false, 'The passengers mutinied and locked you in the lavatory. 😡', 'mutiny'); } else S.lowHapT = 0;
     if (S.phase === 'flight' && S.dist >= TOTAL) startLanding();
     if (S.over) return;
   }
@@ -445,7 +445,7 @@ function updateHud(prog, speed, tools, si) {
   $('flash').style.opacity = S.flash * 0.45;
 }
 
-function gameOver(won, reason) {
+function gameOver(won, reason, kind) {
   S.over = true; S.running = false;
   if (droneGain) droneGain.gain.value = 0;
   if (windGain) windGain.gain.value = 0;
@@ -466,16 +466,20 @@ function gameOver(won, reason) {
   } else {
     html = `<h1>💥 Mission failed</h1><p>${reason}</p>
       <p>You made it <b>${Math.round(S.dist / TOTAL * 100)}%</b> of the way.<br>${stats}</p>`;
-    explode('L'); explode('R');
   }
-  netEvent('over', html);
-  showGameOver(html);
+  // (first the ending cutscene, on everyone's screen: cutscene.js)
+  const end = { won, kind, q: S.landQuality };
+  netEvent('over', { html, end });
+  showGameOver(html, end);
 }
-function showGameOver(html) {
+function showGameOver(html, end) {
   S.over = true; S.running = false;
   unlock();
-  $('ovBox').innerHTML = html + `<button class="big" onclick="location.href = location.pathname">Fly again</button>`;
-  $('overlay').style.display = 'flex';
+  const show = () => {
+    $('ovBox').innerHTML = html + `<button class="big" onclick="location.href = location.pathname">Fly again</button>`;
+    $('overlay').style.display = 'flex';
+  };
+  if (end) playEnding(end, show); else show();
 }
 
 function startGame() {
@@ -641,7 +645,7 @@ function step(now) {
     camera.position.set(P.x, P.y + EYE, P.z);
     camera.rotation.set(0.02, Math.sin(now / 3000) * 0.4, 0);
     for (const s of ['L', 'R']) engines[s].prop.rotation.z += 0.15;
-  } else { fireFx.update(dt); smokeFx.update(dt); }
+  } else { if (END.on) updateEnding(dt); fireFx.update(dt); smokeFx.update(dt); }
 }
 function frame(now) {
   lastDrawn = performance.now();
