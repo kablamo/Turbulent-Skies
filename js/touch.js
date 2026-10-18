@@ -44,29 +44,40 @@ stick.addEventListener('touchstart', e => {
 }, { passive: false });
 
 // dragging on the game itself looks around
-let lookId = null, lookX = 0, lookY = 0;
+// (a second finger on the game as well: pinch to zoom the third-person camera in and out)
+let lookId = null, lookX = 0, lookY = 0, pinchId = null, pinchX = 0, pinchY = 0, pinchD = 0;
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (lookId === null) { const t = e.changedTouches[0]; lookId = t.identifier; lookX = t.clientX; lookY = t.clientY; }
+  const t = e.changedTouches[0];
+  if (lookId === null) { lookId = t.identifier; lookX = t.clientX; lookY = t.clientY; }
+  else if (pinchId === null) { pinchId = t.identifier; pinchX = t.clientX; pinchY = t.clientY; pinchD = Math.hypot(pinchX - lookX, pinchY - lookY); }
 }, { passive: false });
 
 addEventListener('touchmove', e => {
   for (const t of e.changedTouches) {
     if (t.identifier === stickId) setStick(t.clientX - stickC.x, t.clientY - stickC.y);
+    else if (t.identifier === pinchId) { pinchX = t.clientX; pinchY = t.clientY; }
     else if (t.identifier === lookId) {
-      if (S.running && !S.paused) {
+      if (S.running && !S.paused && pinchId === null) {
         P.yaw -= (t.clientX - lookX) * 0.006;
         P.pitch = clamp(P.pitch - (t.clientY - lookY) * 0.006, -1.45, 1.45);
       }
       lookX = t.clientX; lookY = t.clientY;
     }
   }
+  if (pinchId !== null) {
+    // fingers apart: zoom in; together: back out
+    const d = Math.hypot(pinchX - lookX, pinchY - lookY);
+    if (pinchD > 20 && d > 20 && S.view === 'third') zoomCam(pinchD / d);
+    pinchD = d;
+  }
   if (S.running && e.target.closest && !e.target.closest('#overlay')) e.preventDefault();
 }, { passive: false });
 function touchEnd(e) {
   for (const t of e.changedTouches) {
     if (t.identifier === stickId) { stickId = null; setStick(0, 0); keys.shift = false; }
-    if (t.identifier === lookId) lookId = null;
+    if (t.identifier === pinchId) pinchId = null;
+    if (t.identifier === lookId) { lookId = pinchId; lookX = pinchX; lookY = pinchY; pinchId = null; }   // (the other finger carries on looking)
   }
 }
 addEventListener('touchend', touchEnd);

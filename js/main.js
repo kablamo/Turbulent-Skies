@@ -289,7 +289,7 @@ function update(dt) {
     camera.lookAt(plane.localToWorld(tmpV.set(0, 1, -25)));
   } else if (S.view === 'third' && !S.flying && !(S.driving && !S.driving.push)) {
     // third person: the camera hangs back behind your character (V switches to first person)
-    thirdPersonCam(shake);
+    thirdPersonCam(shake, dt);
   } else if (S.driving) {
     // sitting in the driver's seat (or walking behind the trolley)
     const v = S.driving, e = vehPoint(v, v.eye.x, v.eye.z);
@@ -500,34 +500,89 @@ function boardAll() {
 window.__debug = { skipCutscene: () => skipCutscene(), NET, spawnFault, startCall, boardAll, takeOff, startFlight, throwHeld, enterVehicle, vehicleAction, S, P, PW, doors, lavDoors, ramp, items, passengers, hole, trolleys, bus };
 
 // ---------------------------------------------------------------- third person
-// The camera sits behind and a little above your head, looking the way you look. Indoors (the cabin, the
-// terminal, the bus) it slides in closer rather than poking through the walls.
-const _eye = new THREE.Vector3(), _cam = new THREE.Vector3(), BOOM = 3.4;
+// The camera sits behind and a little above your head, looking the way you look. It never sees through
+// anything: if a wall, a wing, an engine or the ground gets between you and it, it slides in closer
+// (straight away), then eases back out once the way is clear. The mouse wheel (or a pinch) zooms in and out.
+const _eye = new THREE.Vector3(), _cam = new THREE.Vector3(), _cs = new THREE.Vector3(), BOOM = 3.4, BOOM_MIN = 1.2, BOOM_MAX = 7;
+S.camZoom = BOOM;
+function zoomCam(k) { S.camZoom = clamp(S.camZoom * k, BOOM_MIN, BOOM_MAX); }
+canvas.addEventListener('wheel', e => {
+  if (S.view !== 'third') return;
+  e.preventDefault(); zoomCam(Math.exp(clamp(e.deltaY, -100, 100) * 0.0015));
+}, { passive: false });
+// is this spot somewhere the camera may be? (only ever where you could see from where you are)
 function camSpotOK(c) {
-  if (insideHull(P.x, P.z)) return insideHull(c.x, c.z) && Math.abs(c.x) < hullHW(c.z) - 0.15 && c.y > 0.25 && c.y < ceilAt(c.z) - 0.3;
-  if (S.phase === 'airport') {
-    if (inTerminal(P.x, P.z)) return inTerminal(c.x, c.z) && c.y > GROUND + 0.3 && c.y < GROUND + 5.4;
-    if (vehicleZoneAt(bus, P.x, P.z)) { const l = vehLocal(bus, c.x, c.z); return Math.abs(l.x) < 1.15 && Math.abs(l.z) < 4.0 && c.y > VFLOOR + 0.3 && c.y < VFLOOR + 2.4; }
-  }
   const g = groundAt(c.x, c.z);
+  if (insideHull(P.x, P.z)) {
+    if (!insideHull(c.x, c.z) || Math.abs(c.x) > hullHW(c.z) - 0.15 || c.y < 0.25 || c.y > ceilAt(c.z) - 0.3) return false;
+    // the cockpit wall (except through its doorway) and the toilets' walls
+    if ((P.z < BULK) !== (c.z < BULK) && Math.abs(c.x) > 0.5) return false;
+    for (const r of [ROOMS[3], ROOMS[8]]) if ((P.x > r[0] && P.x < r[1] && P.z > r[2] && P.z < r[3]) !== (c.x > r[0] - 0.1 && c.x < r[1] + 0.1 && c.z > r[2] - 0.1 && c.z < r[3] + 0.1)) return false;
+    return true;
+  }
+  // outside: not inside the plane, its wings or its engines
+  if (insideHull(c.x, c.z) && c.y > -1.3 && c.y < ceilAt(c.z) + 0.5) return false;
+  if (Math.abs(c.x) > ROOT - 0.1 && onWing(c.x, c.z) && Math.abs(c.y - wingY(c.x, c.z)) < 0.3) return false;
+  if (inEngine(c.x, c.z) && Math.abs(c.y - ENG_Y) < ENG_R + 0.2) return false;
+  if (S.phase === 'airport') {
+    if (inTerminal(P.x, P.z) !== inTerminal(c.x, c.z) && c.y < GROUND + 6) return false;
+    if (inTerminal(P.x, P.z)) return c.y > GROUND + 0.3 && c.y < GROUND + 5.4;
+    if (vehicleZoneAt(bus, P.x, P.z)) { const l = vehLocal(bus, c.x, c.z); return Math.abs(l.x) < 1.15 && Math.abs(l.z) < 4.0 && c.y > VFLOOR + 0.3 && c.y < VFLOOR + 2.4; }
+    if (inAirport(c.x, c.z) && vehicleBlocks(c.x, c.z, c.y - 0.2)) return false;
+  }
   return g === null || c.y > g + 0.3;
 }
-function thirdPersonCam(shake) {
+// can the camera see you from here? (every spot along the way has to be clear, not just the end)
+function camClear(c) {
+  const n = Math.ceil(_eye.distanceTo(c) / 0.2);
+  for (let i = 1; i <= n; i++) if (!camSpotOK(_cs.lerpVectors(_eye, c, i / n))) return false;
+  return true;
+}
+function camAt(b, d, side) {
+  // over your shoulder, so you can see past your own head (and a bit high, so your character sits low on the
+  // screen). Squeezed in close it drops to shoulder height and moves out to the side instead, so your hat
+  // isn't filling the screen.
+  const k = Math.min(1, b / BOOM), s = side * (0.45 + 0.25 * (1 - k));
+  _cam.copy(_eye).addScaledVector(d, -b); _cam.y += 0.12 + 0.63 * k;
+  _cam.x += Math.cos(P.yaw) * s; _cam.z -= Math.sin(P.yaw) * s;
+  return _cam;
+}
+function thirdPersonCam(shake, dt) {
   const d = lookDir(P);
-  _eye.set(P.x, P.y + EYE - 0.1, P.z);
-  for (let b = BOOM; b > 0.3; b -= 0.15) {
-    // over your right shoulder, so you can see past your own head
-    // (and a bit high, so your character sits low on the screen and their hat isn't in the way)
-    _cam.copy(_eye).addScaledVector(d, -b); _cam.y += 0.75 * b / BOOM;
-    _cam.x += Math.cos(P.yaw) * 0.45 * b / BOOM; _cam.z -= Math.sin(P.yaw) * 0.45 * b / BOOM;
-    if (camSpotOK(_cam)) break;
-  }
+  // follow your head, but smooth out little bumps (steps, the ramp's edge); big drops it keeps right up with
+  const ey = P.y + EYE - 0.1;
+  S.camEyeY = S.camEyeY === undefined || Math.abs(S.camEyeY - ey) > 0.8 ? ey : S.camEyeY + (ey - S.camEyeY) * (1 - Math.exp(-14 * dt));
+  _eye.set(P.x, S.camEyeY, P.z);
+  // as far back as you've zoomed, or as far as it can see you from: over the right shoulder, or the left
+  // one if there's a wall on your right, or straight behind if both are tight
+  let b = S.camZoom, side = 1;
+  search: for (; b > 0.3; b -= 0.15) for (const s of [1, -1, 0]) if (camClear(camAt(b, d, s))) { side = s; break search; }
+  if (b <= 0.3) { b = 0.3; side = 0; }
+  // pulling in happens at once (so it never sees through a wall); going back out, or across to the other
+  // shoulder, is gentle
+  S.camBoom = S.camBoom === undefined || b < S.camBoom ? b : S.camBoom + (b - S.camBoom) * (1 - Math.exp(-4 * dt));
+  S.camSide = S.camSide === undefined ? side : S.camSide + (side - S.camSide) * (1 - Math.exp(-6 * dt));
+  if (!camClear(camAt(S.camBoom, d, S.camSide))) camAt(S.camBoom, d, side);   // (mid-swap the in-between spot may be in a wall)
   S.camDist = _cam.distanceTo(_eye); S.camThird = true;
   camera.position.set(_cam.x + rand(-shake, shake), _cam.y + rand(-shake, shake), _cam.z);
   camera.rotation.set(P.pitch, P.yaw, 0);
 }
 // your own character (the same pilot everyone else sees), drawn when the camera is outside your head
 let ME = null;
+// with the camera squeezed in close behind you, your character fades out (rather than a hat filling the screen)
+function fadeMe(a) {
+  if (a < 0.05) ME.g.visible = false;
+  if (Math.abs(a - (ME.fade ?? 1)) < 0.01) return;
+  ME.fade = a;
+  ME.g.traverse(o => {
+    if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+    // your own copy of the material (everyone else's pilot shares it), made the first time you fade
+    if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = o.material.userData.base = { opacity: o.material.opacity, transparent: o.material.transparent }; }
+    const m = o.material, base = o.userData.ownMat, see = a < 1 || base.transparent;
+    if (m.transparent !== see) m.needsUpdate = true;
+    m.transparent = see; m.opacity = base.opacity * a; m.depthWrite = a >= 1 && !base.transparent;
+  });
+}
 function updateMe(dt) {
   if (!ME) {
     ME = makeAvatar(NET.name, 'me'); ME.isMe = true;
@@ -536,6 +591,7 @@ function updateMe(dt) {
   }
   const seatCam = (S.driving && !S.driving.push) || S.flying;
   ME.g.visible = S.chase || (S.view === 'third' && !seatCam);
+  fadeMe(ME.g.visible && S.camThird && !S.chase ? clamp((S.camDist - 0.9) / 0.9, 0, 1) : 1);
   const d = playerPose(LOCAL);
   if (P.falling) d.air = true;
   if (carriedByName()) d.cb = 1;
