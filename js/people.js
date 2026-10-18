@@ -162,6 +162,27 @@ const BAGS = {
     for (const s of [-1, 1]) textPlane(0.5, 0.16, 'NUKE ☢ DO NOT DROP', '#4a5a3a', '#ffd400', g, s * 0.365, 0.45, -0.05, s * Math.PI / 2, 'bold 34px sans-serif');
     const btn = cyl(0.06, 0.07, 0.05, mat(0xff1a1a, { emissive: 0x440000 }), 0, 0.78, -0.05, g); g.userData.button = btn;
   } },
+  // ---- silly weapons (cargo.js: hold one, then right-click or E)
+  rubberchicken: { name: 'rubber chicken', r: 0.25, loose: true, weapon: 'whack', build: g => {
+    const y = mat(0xffd21a, { roughness: .3 });
+    sph(0.09, y, 0, 0.09, -0.22, g, [1, 1, 2.6]); sph(0.07, y, 0, 0.12, 0.08, g);
+    box(0.02, 0.05, 0.05, mat(0xe02020), 0, 0.2, 0.08, g);
+    const bk = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 6), mat(0xff8a1a)); bk.rotation.x = Math.PI / 2; bk.position.set(0, 0.12, 0.16); g.add(bk);
+    for (const s of [-1, 1]) cyl(0.012, 0.012, 0.12, mat(0xff8a1a), s * 0.03, 0.06, -0.48, g).rotation.x = Math.PI / 2;
+  } },
+  blaster: { name: 'foam dart blaster', r: 0.28, loose: true, weapon: 'dart', build: g => {
+    box(0.12, 0.14, 0.42, mat(0x2f7bff), 0, 0.2, 0, g); box(0.1, 0.18, 0.08, mat(0xff8a1a), 0, 0.08, 0.1, g);
+    const b = cyl(0.04, 0.04, 0.3, mat(0xff8a1a), 0, 0.22, -0.3, g); b.rotation.x = Math.PI / 2;
+    cyl(0.07, 0.07, 0.12, mat(0xffd400), 0, 0.3, 0.02, g).rotation.z = Math.PI / 2;
+  } },
+  bananagun: { name: 'banana launcher', r: 0.3, loose: true, weapon: 'banana', build: g => {
+    const t = cyl(0.1, 0.12, 0.6, mat(0x5a3a22), 0, 0.2, 0, g); t.rotation.x = Math.PI / 2;
+    box(0.08, 0.16, 0.08, M.dark, 0, 0.08, 0.15, g);
+    for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.025, 6, 10, Math.PI * 0.8), mat(0xffe135)); b.position.set(-0.08 + k * 0.08, 0.34, 0.15); g.add(b); }
+  } },
+  banana: { name: 'banana peel', r: 0.12, extra: true, build: g => {
+    const b = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI * 0.9), mat(0xffe135)); b.rotation.x = Math.PI / 2; b.position.y = 0.03; g.add(b);
+  } },
   egg: { name: 'egg', r: 0.08, extra: true, build: g => { sph(0.06, mat(0xfff4dc, { roughness: .3 }), 0, 0.08, 0, g, [1, 1.3, 1]); } },
 };
 // a point (x, y, z) against a bag's box: how far it pokes in, and which way to push it out (null if outside)
@@ -490,7 +511,7 @@ const PAX_COUNT = 20, PAX_NEEDED = 8;
   // always one in reach. Any BAGS_NEEDED of them in the cargo bay will do.
   const spare = ['suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase', 'backpack', 'briefcase', 'suitcase',
     'backpack', 'briefcase', 'suitcase', 'backpack', 'suitcase', 'briefcase', 'backpack', 'suitcase'];
-  for (const k of [...MANIFEST, ...spare, 'beachball', 'boombox', 'balloons', 'pizza', 'cat', 'mystery', 'popper', 'nuke']) spawnBag(BAGS[k]);
+  for (const k of [...MANIFEST, ...spare, 'beachball', 'boombox', 'balloons', 'pizza', 'cat', 'mystery', 'popper', 'nuke', 'rubberchicken', 'blaster', 'bananagun']) spawnBag(BAGS[k]);
   buildPile();
   // the nuke starts out sitting on its own (red) trolley, by the others
   const nk = items.find(i => i.type === BAGS.nuke), w = nukeTrolley.whole;
@@ -827,6 +848,16 @@ function walkToward(p, tx, tz, speed, dt) {
   return d - st < 0.06;
 }
 function stepPassenger(p, dt) {
+  if (p.state === 'autofly') {
+    // AUTO LOAD: up, over, and down into their seat
+    const f = p.fly; f.t += dt;
+    if (f.t < 0) return;
+    const k = Math.min(1, f.t / f.dur), e = k * k * (3 - 2 * k), s = p.seat;
+    p.x = f.fx + (s.x - f.fx) * e; p.z = f.fz + (s.z - f.fz) * e; p.y = f.fy + (0 - f.fy) * e + Math.sin(Math.PI * k) * 10;
+    p.g.position.set(p.x, p.y, p.z); p.g.rotation.set(0, f.t * 8, 0);
+    if (k >= 1) { p.state = 'seated'; p.pose = 'sit'; p.x = s.x; p.z = s.z; p.y = 0; p.g.position.set(s.x, 0, s.z); p.g.rotation.set(0, 0, 0); p.fly = null; }
+    return;
+  }
   if (p.state === 'air' && p.rag) {
     const held = p.rag.pins && p.rag.pins.length;   // someone's dragging them about by a wrist or an ankle
     const done = updateRagdoll(p, dt) && !held;

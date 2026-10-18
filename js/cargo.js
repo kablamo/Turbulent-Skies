@@ -115,6 +115,7 @@ function nukeBoom(it) {
 // ---- every frame, on everyone's screen: music, the nuke's beeping, and the cat's tail
 const TUNE = [523, 659, 784, 659, 587, 698, 880, 698, 523, 659, 784, 1046, 988, 784, 659, 587];
 function cargoTick(dt) {
+  updateDarts(dt); bananaSlips();
   for (const it of items) {
     if (it.state === 'gone') continue;
     const near = Math.max(0, 1 - Math.hypot(it.x - P.x, it.z - P.z) / 18);
@@ -190,8 +191,9 @@ function applyCargoFlags(it, f) {
   window.autoLoadButton = btn;
 })();
 function autoLoad() {
+  const people = autoBoard();
   const b = boarding(), need = BAGS_NEEDED - b.loaded;
-  if (need <= 0) return say('🧳 The cargo bay already has all the bags it needs!', 'good');
+  if (need <= 0) return say(people ? `🤖 AUTO LOAD: ${people} passenger${people > 1 ? 's' : ''} flying to their seats! (The bags are all aboard already.)` : '🧳 The bags and passengers are all aboard already!', 'good');
   // free spots on the cargo bay floor
   const spots = [];
   for (const z of [8.0, 9.3, 10.6]) for (const x of [-2.2, -1.1, 0, 1.1, 2.2]) if (!items.some(i => i.state !== 'gone' && Math.hypot(i.x - x, i.z - z) < 0.5)) spots.push([x, z]);
@@ -207,7 +209,24 @@ function autoLoad() {
   }
   autoLoadButton.position.y = 1.04; setTimeout(() => { autoLoadButton.position.y = 1.08; }, 300);
   beep(440, .1, 'square', .05); setTimeout(() => sweep(300, 900, 0.6, 'triangle', 0.04), 120);
-  say(`🤖 AUTO LOAD: ${n} bag${n > 1 ? 's' : ''} flying into the cargo bay!`, 'good');
+  say(`🤖 AUTO LOAD: ${n} bag${n > 1 ? 's' : ''} into the cargo bay${people ? ` and ${people} passenger${people > 1 ? 's' : ''} to their seats` : ''}!`, 'good');
+}
+// …and the passengers the flight still needs fly (screaming happily) through the air into empty seats
+function autoBoard() {
+  const need = PAX_NEEDED - passengers.filter(p => p.state === 'seated').length;
+  if (need <= 0) return 0;
+  const free = seats.filter(s => !s.occupant);
+  const pool = passengers.filter(p => ['terminal', 'wait', 'toBus', 'walk', 'bus', 'inBus', 'outBus', 'down', 'getup'].includes(p.state) && !insideHull(p.x, p.z));
+  const n = Math.min(need, free.length, pool.length);
+  for (let k = 0; k < n; k++) {
+    const p = pool[k], s = free[k];
+    if (p.busSeat) { p.busSeat.p = null; p.busSeat = null; }
+    if (p.rag) { p.rag = null; p.rig.core.quaternion.identity(); }
+    p.seat = s; s.occupant = p; p.calling = null; p.next = null; p.path = [];
+    p.state = 'autofly'; p.pose = 'flail'; p.fly = { fx: p.x, fy: p.y, fz: p.z, t: -k * 0.25, dur: 2.2 };
+    shout(p, pick(['WHEEEE!', 'I\'M FLYING!', 'Is this the express boarding?', 'AAAAH!', 'Window seat please!']), 2.5);
+  }
+  return n;
 }
 // (host) bags on their way: up, over, and down into the plane
 function autoLoadFly(it, dt) {
@@ -218,4 +237,77 @@ function autoLoadFly(it, dt) {
   it.y = a.fy + (0 - a.fy) * e + Math.sin(Math.PI * k) * 9;
   it.spinY += dt * 6; it.g.position.set(it.x, it.y, it.z); it.g.rotation.set(0, it.spinY, 0);
   if (k >= 1) { it.state = 'free'; it.y = 0; it.vx = it.vy = it.vz = 0; it.auto = null; beep(260, .06, 'triangle', .04); }
+}
+
+// ---------------------------------------------------------------- silly weapons
+// Hold one (left mouse), then right-click (or E): 🐔 the rubber chicken whacks people over, 🎯 the blaster fires
+// foam darts that knock people (and bags) flying, 🍌 the launcher lobs banana peels that people slip on.
+// The host does the knocking-over; everyone sees the darts and bananas fly.
+const heldWeapon = () => { const h = GRAB.hands.find(h => h && h.k === 'item' && items[h.i] && items[h.i].type.weapon); return h ? items[h.i] : null; };
+let weaponT = 0;
+function useHeldWeapon() {
+  const it = heldWeapon(); if (!it || S.t - weaponT < 0.35) return;
+  weaponT = S.t;
+  if (isClient()) netSend({ t: 'fire', i: items.indexOf(it) }); else weaponFire(LOCAL, it);
+  if (it.type.weapon === 'whack') { quack(); } else beep(it.type.weapon === 'dart' ? 900 : 300, .08, 'square', .05);
+}
+// knock someone over from a hit (even out of their seat: they'll find their way back once they get up)
+function weaponHit(p, vx, vy, vz) {
+  if (!p || ['gone', 'held', 'bus', 'inBus', 'outBus', 'autofly'].includes(p.state)) return;
+  if (p.seat) { p.seat.occupant = null; p.seat = null; }
+  p.calling = null; p.next = null;
+  if (p.rag) { p.state = 'air'; p.rag.targets = null; p.rag.k = 0; p.rag.prev.forEach((q, i) => q.copy(p.rag.pos[i]).sub(new THREE.Vector3(vx, vy, vz).multiplyScalar(RAG_H))); }
+  else ragdoll(p, vx, vy, vz);
+  shout(p, pick(['OW!', 'HEY!', 'Was that a CHICKEN?!', 'I\'m telling the captain!', 'Not the face!']), 2.5);
+}
+// (host) what a weapon does when used by `who`
+function weaponFire(who, it) {
+  const pz = who.isLocal ? P : who.pose, d = lookDir({ yaw: pz.yaw, pitch: pz.pitch || 0 });
+  const ox = it.g.position.x, oy = it.g.position.y + 0.25, oz = it.g.position.z;
+  if (it.type.weapon === 'whack') {
+    // a swing: anyone just in front of you goes flying
+    for (const p of passengers) {
+      const dx = p.x - pz.x, dz = p.z - pz.z, dd = Math.hypot(dx, dz);
+      if (dd < 2.0 && dd > 0.05 && (dx * d.x + dz * d.z) / dd > 0.3) weaponHit(p, d.x * 8, 3.5, d.z * 8);
+    }
+    for (const o of items) if (o !== it && (o.state === 'free' || o.state === 'pile') && Math.hypot(o.x - ox, o.z - oz) < 1.4) { o.state = 'free'; o.vx = d.x * 7; o.vz = d.z * 7; o.vy = 2.5; }
+    netEvent('whack', r2(ox), r2(oy), r2(oz)); burstConfetti(ox, oy, oz, 12);
+  } else if (it.type.weapon === 'dart') {
+    const v = [d.x * 26, d.y * 26 + 1, d.z * 26];
+    netEvent('dart', r2(ox), r2(oy), r2(oz), ...v.map(r2)); spawnDart(ox, oy, oz, ...v, true);
+  } else if (it.type.weapon === 'banana') {
+    const b = spawnBag(BAGS.banana); Object.assign(b, { state: 'free', x: ox + d.x * 0.5, y: oy, z: oz + d.z * 0.5, vx: d.x * 9, vy: 3 + d.y * 6, vz: d.z * 9 }); b.g.visible = true;
+  }
+}
+// foam darts: little orange things that fly fast and drop a bit (the host's ones knock things over)
+const darts = [], dartMat = std(0xff8a1a);
+function spawnDart(x, y, z, vx, vy, vz, real) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.18, 6), dartMat); m.position.set(x, y, z); plane.add(m);
+  darts.push({ m, x, y, z, vx, vy, vz, t: 0, real });
+}
+function updateDarts(dt) {
+  for (let i = darts.length - 1; i >= 0; i--) {
+    const d = darts[i]; d.t += dt; d.vy -= 6 * dt;
+    const nx = d.x + d.vx * dt, ny = d.y + d.vy * dt, nz = d.z + d.vz * dt;
+    let hit = d.t > 2.5 || !canGo(d.x, d.z, ny, nx, nz) || ny < (groundAt(nx, nz) ?? -99);
+    if (d.real && !hit) {
+      for (const p of passengers) if (p.state !== 'gone' && Math.hypot(p.x - nx, p.z - nz) < 0.45 && ny > p.y && ny < p.y + 1.6) { weaponHit(p, d.vx * 0.3, 3, d.vz * 0.3); hit = true; break; }
+      if (!hit) for (const o of items) if ((o.state === 'free' || o.state === 'pile') && !o.extra && Math.hypot(o.x - nx, o.z - nz) < (o.r || 0.3) && ny < o.y + (o.h || 0.4)) { o.state = 'free'; o.vx = d.vx * 0.25; o.vz = d.vz * 0.25; o.vy = 2; hit = true; break; }
+    }
+    d.x = nx; d.y = ny; d.z = nz; d.m.position.set(nx, ny, nz);
+    d.m.lookAt(plane.localToWorld(new THREE.Vector3(nx + d.vx, ny + d.vy, nz + d.vz))); d.m.rotateX(Math.PI / 2);
+    if (hit) { plane.remove(d.m); darts.splice(i, 1); }
+  }
+}
+// banana peels on the floor: walk onto one and down you go (host: passengers; everyone: their own player)
+function bananaSlips() {
+  for (const b of items) {
+    if (b.type !== BAGS.banana || b.state !== 'free' || Math.abs(b.vy) > 0.1) continue;
+    if (!isClient()) for (const p of passengers) if (ON_FOOT.has(p.state) && Math.hypot(p.x - b.x, p.z - b.z) < 0.35) {
+      ragdoll(p, -Math.sin(p.g.rotation.y) * 3, 2.5, -Math.cos(p.g.rotation.y) * 3); shout(p, pick(['WHOOOA!', 'BANANA!', 'Who left THAT there?!']), 2.5); slideWhistle(true);
+    }
+    if (ME && ME.rag && !ME.rag.limp && Math.hypot(P.x - b.x, P.z - b.z) < 0.35 && Math.hypot(P.mvx, P.mvz) > 1) {
+      goLimp(ME, P.mvx * 1.6, 2.5, P.mvz * 1.6); sayLocal('🍌 You slipped on a banana peel!'); slideWhistle(true);
+    }
+  }
 }

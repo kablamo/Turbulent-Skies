@@ -363,7 +363,7 @@ function keyDown(k, repeat) {
   if (k === 'p' && S.running && !S.over) { if (S.paused) resume(); else showPause(); }
   if ((k === 'h' || k === '?') && S.running && !S.over) { if (S.helpOpen) resume(); else showPause(true); }
   if (k === 'escape' && S.helpOpen) resume();
-  if (k === 'e') S.press = true;
+  if (k === 'e' || k === 'fire') { if (heldWeapon()) useHeldWeapon(); else if (k === 'e') S.press = true; }   // (E fires a held weapon)
   if (k === 'q') S.drop = true;
   if (k === 'f') S.act = true;
   if (k === ' ') S.jump = true;
@@ -407,6 +407,7 @@ function helpHTML() {
       <tr><td>${k_('Shift')}</td><td>Run</td></tr>
       <tr><td>${k_('Space')}</td><td>Jump</td></tr>
       <tr><td>${k_('E')}</td><td>Uses things: switch on the 📻 boombox, share 🍕 pizza, open the 🎁 mystery box, pet the 🐱 cat, press the ☢ nuke's button (don't)</td></tr>
+      <tr><td>Right-click (or ${k_('E')})</td><td>Use the weapon you're holding: 🐔 rubber chicken (whack!), 🎯 foam dart blaster, 🍌 banana launcher</td></tr>
       <tr><td>Fun cargo</td><td>Kick the 🏖 beach ball; hold the 🎈 balloons to float; throw the 🎉 party crate for confetti</td></tr>
       <tr><td>Hold / mash ${k_('E')}</td><td>Repairs that say "Hold E" or "Mash E"</td></tr>
       <tr><td>${k_('Q')}</td><td>Put down what you're carrying (next to the luggage trolley, it goes on the trolley)</td></tr>

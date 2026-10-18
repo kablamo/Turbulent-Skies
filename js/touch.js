@@ -8,6 +8,7 @@ touchUI.innerHTML = `
     <button class="tb" data-k="c">C<small>camera</small></button>
     <button class="tb" data-k="f">F<small>vehicle</small></button>
     <button class="tb" data-k="q">Q<small>put down</small></button>
+    <button class="tb" data-k="fire">💥<small>use</small></button>
     <button class="tb" data-k="r">🫠<small>flop</small></button>
     <button class="tb" data-k=" ">⤒<small>jump</small></button>
     <button class="tb main" data-k="grab">✊<small>interact</small></button>
@@ -91,6 +92,7 @@ setInterval(() => {
   tbtn('q').style.display = S.held || carrying || (S.driving && S.driving.kind === 'bus') ? '' : 'none';
   tbtn(' ').style.display = walking ? '' : 'none';
   tbtn('r').style.display = walking && !S.held ? '' : 'none';
+  tbtn('fire').style.display = heldWeapon() ? '' : 'none';
   tbtn(' ').querySelector('small').textContent = carriedByName() ? 'wriggle' : 'jump';
   tbtn('q').querySelector('small').textContent = S.driving ? 'door' : 'put down';
   tbtn('grab').querySelector('small').textContent = S.driving && S.driving.push ? 'let go' : S.driving || S.flying ? 'get up' : S.held || carrying ? 'throw' : 'interact';
